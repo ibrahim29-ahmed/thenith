@@ -13,9 +13,6 @@ function getBearerToken(request) {
   if (header?.startsWith("Bearer ")) {
     return header.slice(7).trim();
   }
-  if (request.query?.token) {
-    return request.query.token;
-  }
   return null;
 }
 
@@ -57,4 +54,5 @@ async function optionalAuth(request, _response, next) {
   return next();
 }
 
+export { requireAuth, optionalAuth };
 export default { requireAuth, optionalAuth };

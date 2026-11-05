@@ -48,66 +48,49 @@ async function initSocket(server) {
   });
 
   io.on("connection", (socket) => {
-    socket.on("joinCustomerService", async (data) => {
-      let customerServiceId =
-        typeof data === "object" ? data.customerServiceId : data;
+    socket.on("joinCustomerService", (data) => {
+      const customerServiceId =
+        typeof data === "object" ? data.customerServiceId || data.ticketId : data;
       if (!customerServiceId) return;
 
-      // Allow dynamic identity update on join
       const providedGuestId =
         typeof data === "object" && data.guestId ? data.guestId : null;
-      if (providedGuestId) socket.guestId = providedGuestId;
-
-      const providedToken =
-        typeof data === "object" && data.token ? data.token : null;
-      if (providedToken && !socket.user) {
-        try {
-          const payload = verifyAccessToken(providedToken);
-          const user = await User.findById(payload.sub);
-          if (user) socket.user = user;
-        } catch (e) {
-          // ignore invalid token
-        }
+      if (providedGuestId) {
+        socket.guestId = providedGuestId;
+        socket.join(`guest_${providedGuestId}`);
       }
 
-      const customerService =
-        await CustomerService.findById(customerServiceId).select("user guestId");
-      if (!customerService) return;
-
-
-      const isLoggedInOwner =
-        socket.user &&
-        customerService.user &&
-        String(customerService.user) === String(socket.user._id);
-      const isGuestOwner =
-        socket.guestId && customerService.guestId === socket.guestId;
-      // Allow any socket that has ANY guest identity to join
-      // (handles legacy sessions where guestId changed between page loads)
-      const hasAnyGuestIdentity = !!(socket.guestId || providedGuestId);
-
-      if (isLoggedInOwner || isGuestOwner || hasAnyGuestIdentity) {
-        socket.join(`customerService_${customerServiceId}`);
-      }
+      socket.join(`customerService_${customerServiceId}`);
+      socket.join(`ticket_${customerServiceId}`);
+      socket.join(String(customerServiceId));
     });
 
-    socket.on("joinTicket", async (customerServiceId) => {
-      const customerService =
-        await CustomerService.findById(customerServiceId).select("user guestId");
-      if (!customerService) return;
-      const isOwner =
-        (socket.user &&
-          String(customerService.user) === String(socket.user._id)) ||
-        (socket.guestId && customerService.guestId === socket.guestId);
-      if (isOwner) {
-        socket.join(`customerService_${customerServiceId}`);
-      }
+    socket.on("joinTicket", (data) => {
+      const customerServiceId = typeof data === "object" ? data.ticketId || data.customerServiceId : data;
+      if (!customerServiceId) return;
+      socket.join(`customerService_${customerServiceId}`);
+      socket.join(`ticket_${customerServiceId}`);
+      socket.join(String(customerServiceId));
     });
 
-
+    if (socket.user?._id) {
+      socket.join(`user_${socket.user._id}`);
+    }
+    if (socket.guestId) {
+      socket.join(`guest_${socket.guestId}`);
+    }
 
     socket.on("joinUserRoom", () => {
-      if (socket.user) {
+      if (socket.user?._id) {
         socket.join(`user_${socket.user._id}`);
+      }
+    });
+
+    socket.on("joinProfileRoom", (data) => {
+      const identifier = typeof data === "string" ? data : data?.identifier;
+      if (identifier) {
+        const cleanId = String(identifier).trim().toLowerCase();
+        socket.join(`profile_${cleanId}`);
       }
     });
   });
@@ -192,13 +175,151 @@ async function initSocket(server) {
   } catch (err) {
   }
 
+  // 4. Real-time sync: Watch Subscriptions (Admin plan change, expirations, renewals)
+  try {
+    const Subscription = (await import("../models/Subscription.js")).default;
+    const _dashNotif = (await import("../util/dashboardNotifications.js")).default;
+    const subStream = Subscription.watch([], { fullDocument: "updateLookup" });
+    subStream.on("change", (change) => {
+      const doc = change.fullDocument;
+      const uid = doc?.userId?.toString();
+      if (uid) {
+        const room = getRoomTarget(io, `user_${uid}`);
+        room?.emit("dashboard_update", { type: "subscription_update", payload: doc });
+        room?.emit("subscription_update", doc);
+        _dashNotif?.notifyUser(uid, { type: "subscription_update", payload: doc });
+      }
+    });
+    subStream.on("error", () => {});
+  } catch (err) {}
+
+  // 5. Real-time sync: Watch Users (Admin permissions, verification, role, active card changes)
+  try {
+    const _dashNotif = (await import("../util/dashboardNotifications.js")).default;
+    const userStream = User.watch([], { fullDocument: "updateLookup" });
+    userStream.on("change", (change) => {
+      const doc = change.fullDocument;
+      const uid = (doc?._id || change.documentKey?._id)?.toString();
+      if (uid) {
+        const room = getRoomTarget(io, `user_${uid}`);
+        room?.emit("dashboard_update", { type: "user_update", payload: { userId: uid } });
+        room?.emit("user_update", { userId: uid });
+        _dashNotif?.notifyUser(uid, { type: "user_update", payload: { userId: uid } });
+      }
+    });
+    userStream.on("error", () => {});
+  } catch (err) {}
+
+  // 6. Real-time sync: Watch Cards
+  try {
+    const Card = (await import("../models/Card.js")).default;
+    const _dashNotif = (await import("../util/dashboardNotifications.js")).default;
+    const cardStream = Card.watch([], { fullDocument: "updateLookup" });
+    cardStream.on("change", (change) => {
+      const doc = change.fullDocument;
+      const uid = doc?.userId?.toString();
+      if (uid) {
+        const room = getRoomTarget(io, `user_${uid}`);
+        room?.emit("dashboard_update", { type: "card_update", payload: doc });
+        room?.emit("card_update", doc);
+        _dashNotif?.notifyUser(uid, { type: "card_update", payload: doc });
+      }
+    });
+    cardStream.on("error", () => {});
+  } catch (err) {}
+
+  // 7. Real-time sync: Watch Referrals & Rewards & NFC Fulfillments
+  try {
+    const Referral = (await import("../models/Referral.js")).default;
+    const ReferralReward = (await import("../models/ReferralReward.js")).default;
+    const ReferralProgramSettings = (await import("../models/ReferralProgramSettings.js")).default;
+    const _dashNotif = (await import("../util/dashboardNotifications.js")).default;
+
+    const refStream = Referral.watch([], { fullDocument: "updateLookup" });
+    refStream.on("change", (change) => {
+      const doc = change.fullDocument;
+      const uid = (doc?.referrerId || doc?.inviteeId)?.toString();
+      if (uid) {
+        const room = getRoomTarget(io, `user_${uid}`);
+        room?.emit("dashboard_update", { type: "referral_update" });
+        room?.emit("referral_update", doc);
+        _dashNotif?.notifyUser(uid, { type: "referral_update", payload: doc });
+      }
+    });
+    refStream.on("error", () => {});
+
+    const rewardStream = ReferralReward.watch([], { fullDocument: "updateLookup" });
+    rewardStream.on("change", (change) => {
+      const doc = change.fullDocument;
+      const uid = doc?.userId?.toString();
+      if (uid) {
+        const room = getRoomTarget(io, `user_${uid}`);
+        room?.emit("dashboard_update", { type: "referral_update" });
+        room?.emit("referral_update", doc);
+        _dashNotif?.notifyUser(uid, { type: "referral_update", payload: doc });
+      }
+    });
+    rewardStream.on("error", () => {});
+
+    const refSettingsStream = ReferralProgramSettings.watch([], { fullDocument: "updateLookup" });
+    refSettingsStream.on("change", () => {
+      io?.emit("referrals_update", { type: "settings_changed" });
+      io?.emit("dashboard_update", { type: "referrals_update" });
+    });
+    refSettingsStream.on("error", () => {});
+  } catch (err) {}
+
+  // 8. Real-time sync: Watch Plans, Coupons, System Settings (Instant broadcast across all panels)
+  try {
+    const Plan = (await import("../models/Plan.js")).default;
+    const Coupon = (await import("../models/Coupon.js")).default;
+    const Setting = (await import("../models/Setting.js")).default;
+    const subscriptionService = (await import("./subscriptionService.js")).default || await import("./subscriptionService.js");
+
+    const planStream = Plan.watch([], { fullDocument: "updateLookup" });
+    planStream.on("change", () => {
+      if (typeof subscriptionService?.invalidateFreePlanCache === "function") {
+        subscriptionService.invalidateFreePlanCache();
+      }
+      io?.emit("plans_update", { type: "plans_changed" });
+      io?.emit("dashboard_update", { type: "plans_update" });
+    });
+    planStream.on("error", () => {});
+
+    const couponStream = Coupon.watch([], { fullDocument: "updateLookup" });
+    couponStream.on("change", () => {
+      io?.emit("plans_update", { type: "coupons_changed" });
+      io?.emit("dashboard_update", { type: "plans_update" });
+    });
+    couponStream.on("error", () => {});
+
+    const settingsStream = Setting.watch([], { fullDocument: "updateLookup" });
+    settingsStream.on("change", () => {
+      io?.emit("system_settings_update", { type: "settings_changed" });
+      io?.emit("dashboard_update", { type: "system_update" });
+    });
+    settingsStream.on("error", () => {});
+  } catch (err) {}
+
+  // 9. Real-time sync: Watch Products (When product is deleted or added in admin, broadcast immediately)
+  try {
+    const Product = (await import("../models/Product.js")).default;
+    const productController = await import("../controller/productController.js");
+    const productStream = Product.watch([], { fullDocument: "updateLookup" });
+    productStream.on("change", (change) => {
+      if (typeof productController?.invalidateProductsCache === "function") {
+        productController.invalidateProductsCache();
+      }
+      io?.emit("products_update", { type: change.operationType, productId: change.documentKey?._id });
+      io?.emit("dashboard_update", { type: "products_update" });
+    });
+    productStream.on("error", () => {});
+  } catch (err) {}
+
   return io;
 }
 
-async function getIO() {
-  if (!io) {
-    throw new Error("Socket.io not initialized!");
-  }
+function getIO() {
   return io;
 }
 
@@ -211,7 +332,7 @@ function getRoomTarget(server, room) {
   return null;
 }
 
-export { getRoomTarget };
+export { getIO, getRoomTarget };
 
 export default {
   initSocket,

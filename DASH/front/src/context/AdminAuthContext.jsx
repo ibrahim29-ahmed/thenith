@@ -4,25 +4,29 @@ import { loginAdmin } from "../services/adminApi.js";
 const AdminAuthContext = createContext(null);
 
 export function AdminAuthProvider({ children }) {
-  const [token, setToken] = useState(() => localStorage.getItem("admin_token") || "dev_superadmin_token");
+  const [token, setToken] = useState(() => localStorage.getItem("admin_token") || null);
   const [adminUser, setAdminUser] = useState(() => {
     const t = localStorage.getItem("admin_token");
-    if (!t) return { username: "adam", role: "superadmin" };
+    if (!t) return null;
     try {
       const payload = JSON.parse(atob(t.split(".")[1]));
-      if (payload.exp * 1000 < Date.now()) {
-        return { username: "adam", role: "superadmin" };
+      if (payload.exp && payload.exp * 1000 < Date.now()) {
+        localStorage.removeItem("admin_token");
+        return null;
       }
       return payload;
     } catch {
-      return { username: "adam", role: "superadmin" };
+      localStorage.removeItem("admin_token");
+      return null;
     }
   });
 
   const login = useCallback(async (username, password) => {
     const data = await loginAdmin(username, password);
-    setToken(data.token);
-    setAdminUser({ username: data.username });
+    if (data?.token) {
+      setToken(data.token);
+      setAdminUser(data.user || { username: data.username || username, role: "superadmin" });
+    }
     return data;
   }, []);
 
@@ -32,8 +36,7 @@ export function AdminAuthProvider({ children }) {
     setAdminUser(null);
   }, []);
 
-  // Authentication barrier removed for seamless access
-  const isAuthenticated = true;
+  const isAuthenticated = Boolean(token);
 
   return (
     <AdminAuthContext.Provider

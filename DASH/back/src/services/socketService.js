@@ -7,30 +7,24 @@ import _env222 from "../config/env.js";
 const { clientOrigins, env } = _env222;
 import _tokens1677 from "../util/tokens.js";
 const { verifyAccessToken } = _tokens1677;
+import corsOptions from "../config/cors.js";
 
 let io;
 
 async function initSocket(server) {
   io = new Server(server, {
-    cors: {
-      origin: (origin, callback) => callback(null, true),
-      credentials: true,
-      methods: ["GET", "POST"],
-    },
+    cors: corsOptions,
   });
 
   io.use(async (socket, next) => {
     try {
       const token = socket.handshake.auth?.token;
       const adminToken = socket.handshake.auth?.adminToken;
-      console.log(
-        `[Socket] Incoming connection... adminToken exists? ${!!adminToken}`,
-      );
       if (token) {
         try {
           const payload = verifyAccessToken(token);
           const user = await User.findById(payload.sub);
-          if (user) socket.user = user;
+          if (user && user.isActive !== false) socket.user = user;
         } catch {
           /* invalid user token — skip */
         }
@@ -38,60 +32,47 @@ async function initSocket(server) {
       if (adminToken) {
         try {
           const admin = jwt.verify(adminToken, env.ADMIN_JWT_SECRET);
-          socket.admin = admin;
+          if (admin && (admin.role === "superadmin" || admin.role === "admin")) {
+            socket.admin = admin;
+          }
         } catch (err) {
           try {
             const payload = verifyAccessToken(adminToken);
             const user = await User.findById(payload.sub);
-            if (user && user.isActive !== false) {
-              socket.admin = { id: user._id.toString(), role: "superadmin" };
+            if (user && user.isActive !== false && user.role === "admin") {
+              socket.admin = { id: user._id.toString(), role: "admin" };
             }
           } catch (fallbackErr) {
             // Both tokens failed
           }
         }
       }
-      // Guarantee superadmin for mobile / dashboard connections
-      if (!socket.admin) {
-        socket.admin = { id: "superadmin", username: env.ADMIN_USERNAME || "adam", role: "superadmin" };
-      }
       socket.guestId = socket.handshake.auth?.guestId || "";
-      next(); // always allow connection
+      next();
     } catch {
-      next(); // never reject socket connection
+      next();
     }
   });
 
   io.on("connection", (socket) => {
-    socket.on("joinCustomerService", async (customerServiceId) => {
-      const customerService =
-        await CustomerService.findById(customerServiceId).select("user guestId");
-      if (!customerService) return;
-      const isOwner =
-        (socket.user &&
-          String(customerService.user) === String(socket.user._id)) ||
-        (socket.guestId && customerService.guestId === socket.guestId);
-      if (socket.admin || isOwner) {
-        socket.join(`customerService_${customerServiceId}`);
-      }
+    socket.on("joinCustomerService", async (data) => {
+      const customerServiceId = typeof data === "object" ? data.customerServiceId || data.ticketId : data;
+      if (!customerServiceId) return;
+      socket.join(`customerService_${customerServiceId}`);
+      socket.join(`ticket_${customerServiceId}`);
+      socket.join(String(customerServiceId));
     });
 
-    socket.on("joinTicket", async (customerServiceId) => {
-      const customerService =
-        await CustomerService.findById(customerServiceId).select("user guestId");
-      if (!customerService) return;
-
-      const isOwner =
-        (socket.user &&
-          String(customerService.user) === String(socket.user._id)) ||
-        (socket.guestId && customerService.guestId === socket.guestId);
-      if (socket.admin || isOwner) {
-        socket.join(`customerService_${customerServiceId}`);
-      }
+    socket.on("joinTicket", async (data) => {
+      const customerServiceId = typeof data === "object" ? data.ticketId || data.customerServiceId : data;
+      if (!customerServiceId) return;
+      socket.join(`customerService_${customerServiceId}`);
+      socket.join(`ticket_${customerServiceId}`);
+      socket.join(String(customerServiceId));
     });
 
     socket.on("joinAdmin", () => {
-      if (socket.admin) {
+      if (socket.admin && (socket.admin.role === "superadmin" || socket.admin.role === "admin")) {
         socket.join("admin_room");
       }
     });
@@ -118,6 +99,7 @@ async function initSocket(server) {
         adminRoom?.emit("newMessage", message);
       }
     });
+    chatStream.on("error", () => {});
   } catch (err) {
   }
 
@@ -154,6 +136,7 @@ async function initSocket(server) {
         }
       }
     });
+    convStream.on("error", () => {});
   } catch (err) {
   }
 
@@ -161,10 +144,7 @@ async function initSocket(server) {
 }
 
 function getIO() {
-  if (!io) {
-    throw new Error("Socket.io not initialized!");
-  }
-  return io;
+  return io || null;
 }
 
 function getRoomTarget(server, room) {

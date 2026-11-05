@@ -1,6 +1,7 @@
 import express from "express";
 import cookieParser from "cookie-parser";
 import cors from "cors";
+import helmet from "helmet";
 import corsOptions from "./config/cors.js";
 import adminRoutes from "./routes/adminRoutes.js";
 import _errorHandler from "./middleware/errorHandler.js";
@@ -15,11 +16,32 @@ const { env } = _env;
 export const app = express();
 
 app.set("trust proxy", 1);
+app.use(helmet({
+  crossOriginResourcePolicy: { policy: "cross-origin" },
+}));
 app.use(cors(corsOptions));
 app.options("*", cors(corsOptions));
-app.use(express.json({ limit: "50mb" }));
-app.use(express.urlencoded({ extended: true, limit: "50mb" }));
+app.use(express.json({ limit: "10mb" }));
+app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 app.use(cookieParser());
+
+// ── NoSQL Injection Prevention ──
+function sanitizeMongoKeys(obj) {
+  if (!obj || typeof obj !== "object") return;
+  for (const key of Object.keys(obj)) {
+    if (key.startsWith("$") || key.includes(".")) {
+      delete obj[key];
+    } else if (typeof obj[key] === "object" && obj[key] !== null) {
+      sanitizeMongoKeys(obj[key]);
+    }
+  }
+}
+app.use((req, _res, next) => {
+  if (req.body) sanitizeMongoKeys(req.body);
+  if (req.query) sanitizeMongoKeys(req.query);
+  if (req.params) sanitizeMongoKeys(req.params);
+  next();
+});
 
 // ── Security Audit Logger (non-blocking monitoring) ──
 app.use(securityAudit);
