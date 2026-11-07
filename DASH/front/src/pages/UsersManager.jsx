@@ -1174,7 +1174,14 @@ export default function UsersManager() {
                       name="plan"
                       value={plan.key}
                       checked={selectedPlanKey === plan.key}
-                      onChange={() => setSelectedPlanKey(plan.key)}
+                      onChange={() => {
+                        setSelectedPlanKey(plan.key);
+                        if (plan.key === "pro") {
+                          setPaymentPlusEnabled(true);
+                        } else if (plan.key === "free") {
+                          setPaymentPlusEnabled(false);
+                        }
+                      }}
                       className="text-indigo-600"
                     />
                     <div>

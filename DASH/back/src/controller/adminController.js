@@ -813,11 +813,17 @@ const getUsers = async (req, res, next) => {
 
         const proSub = activeSubs.find((s) => s.planId?.key === "pro");
         const plusSub = activeSubs.find((s) => s.planId?.key === "payment_plus");
-        const hasPaymentPlus = Boolean(
-          user.paymentPlusActive ||
-          plusSub ||
-          (proSub && proSub.planId?.features?.unifiedPaymentHub)
-        );
+        const isPro = Boolean(proSub);
+
+        let hasPaymentPlus = false;
+        if (user.paymentPlusOverride === "enabled") {
+          hasPaymentPlus = true;
+        } else if (user.paymentPlusOverride === "disabled") {
+          hasPaymentPlus = false;
+        } else {
+          // By default: Pro users or explicit payment_plus sub have payment plus active
+          hasPaymentPlus = Boolean(plusSub || isPro || user.paymentPlusActive);
+        }
 
         const plan = proSub?.planId || plans.find((p) => p.key === "free");
         return {
@@ -932,7 +938,21 @@ const changeUserPlan = async (req, res, next) => {
 
     // Handle paymentPlus toggle if provided
     if (typeof paymentPlus === "boolean") {
-      await User.findByIdAndUpdate(req.params.id, { paymentPlusActive: paymentPlus });
+      await User.findByIdAndUpdate(req.params.id, {
+        paymentPlusActive: paymentPlus,
+        paymentPlusOverride: paymentPlus ? "enabled" : "disabled",
+      });
+    } else if (planKey === "pro") {
+      // By default, activating Pro activates payment plus as well
+      await User.findByIdAndUpdate(req.params.id, {
+        paymentPlusActive: true,
+        paymentPlusOverride: "enabled",
+      });
+    } else if (planKey === "free") {
+      await User.findByIdAndUpdate(req.params.id, {
+        paymentPlusActive: false,
+        paymentPlusOverride: "disabled",
+      });
     }
 
     const plan = await Plan.findOne({ key: planKey });
@@ -1031,9 +1051,32 @@ const toggleUserPaymentPlus = async (req, res, next) => {
   try {
     const user = await User.findById(req.params.id);
     if (!user) return res.status(404).json({ error: "User not found" });
-    user.paymentPlusActive = !user.paymentPlusActive;
+
+    const activeSubs = await Subscription.find({
+      userId: user._id,
+      status: { $in: ["active", "trialing"] },
+      $or: [{ expiresAt: null }, { expiresAt: { $gt: new Date() } }],
+    }).populate("planId").lean();
+
+    const proSub = activeSubs.find((s) => s.planId?.key === "pro");
+    const plusSub = activeSubs.find((s) => s.planId?.key === "payment_plus");
+    const isPro = Boolean(proSub);
+
+    let currentStatus = false;
+    if (user.paymentPlusOverride === "enabled") {
+      currentStatus = true;
+    } else if (user.paymentPlusOverride === "disabled") {
+      currentStatus = false;
+    } else {
+      currentStatus = Boolean(plusSub || isPro || user.paymentPlusActive);
+    }
+
+    const nextStatus = !currentStatus;
+    user.paymentPlusOverride = nextStatus ? "enabled" : "disabled";
+    user.paymentPlusActive = nextStatus;
     await user.save();
-    res.json({ success: true, id: user._id, hasPaymentPlus: user.paymentPlusActive });
+
+    res.json({ success: true, id: user._id, hasPaymentPlus: nextStatus });
   } catch (error) {
     next(error);
   }

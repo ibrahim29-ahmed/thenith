@@ -46,6 +46,7 @@ const userSchema = new mongoose.Schema(
     isActive: { type: Boolean, default: true, index: true },
     isEmailVerified: { type: Boolean, default: false },
     paymentPlusActive: { type: Boolean, default: false },
+    paymentPlusOverride: { type: String, enum: ["enabled", "disabled", null], default: null },
     savedCard: {
       cardToken: { type: String, default: null },
       cardTokenUniqueId: { type: String, default: null },
@@ -96,6 +97,13 @@ const userSchema = new mongoose.Schema(
     activePaymentMethodId: {
       type: String,
       default: null,
+    },
+    paymentPageSettings: {
+      avatar: { type: String, default: "" },
+      coverImage: { type: String, default: "" },
+      displayName: { type: String, default: "" },
+      description: { type: String, default: "" },
+      isUnifiedHubEnabled: { type: Boolean, default: false },
     },
   },
   { timestamps: true },

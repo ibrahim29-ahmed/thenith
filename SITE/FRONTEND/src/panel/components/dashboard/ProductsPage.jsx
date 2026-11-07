@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import toast from "react-hot-toast";
 import {
   Check,
   CheckCircle2,
@@ -460,7 +461,7 @@ export default function ProductsPage({ t, personal, onOrder, onOpenCart, onOpenC
           providerNames[targetProvider] ||
           (isArabic ? "وسيلة الدفع" : "Payment Method");
 
-        // Look for matching method in user methods
+        // Look for matching method in user methods (optional match)
         const matchedMethod = (userPaymentData.methods || []).find(
           (m) =>
             m.provider === targetProvider ||
@@ -468,70 +469,34 @@ export default function ProductsPage({ t, personal, onOrder, onOpenCart, onOpenC
             m.name?.includes(provDisplayName)
         );
 
-        // Verify that wallet details are complete (accountName and walletNumber or link)
-        const hasNumber = Boolean(
-          matchedMethod?.walletNumber?.trim() ||
-            matchedMethod?.link?.trim() ||
-            walletNumberParam?.trim()
-        );
-        const hasAccountName = Boolean(
-          matchedMethod?.accountName?.trim() || accountNameParam?.trim()
-        );
-
-        if (!matchedMethod || !hasNumber || !hasAccountName) {
-          const result = await Swal.fire({
-            title: isArabic
-              ? "بيانات المحفظة غير مكتملة"
-              : "Incomplete Wallet Details",
-            html: isArabic
-              ? `<p class='text-sm leading-relaxed text-slate-300'>بيانات محفظة <strong>${provDisplayName}</strong> غير مكتملة. يرجى استكمال بيانات المحفظة (الاسم ورقم المحفظة) أولاً قبل طلب الكارت.</p>`
-              : `<p class='text-sm leading-relaxed text-slate-300'>Your <strong>${provDisplayName}</strong> wallet details are incomplete. Please complete them before ordering.</p>`,
-            icon: "warning",
-            showCancelButton: true,
-            confirmButtonText: isArabic
-              ? "تعديل المحافظ"
-              : "Edit Wallets",
-            cancelButtonText: isArabic ? "إلغاء" : "Cancel",
-            confirmButtonColor: "#4f46e5",
-            cancelButtonColor: "#334155",
-            background: "#0f172a",
-            color: "#fff",
-          });
-
-          if (result.isConfirmed) {
-            setSelectedProduct(null);
-            navigate("/u/cards?sub=payment");
-          }
-          return false;
-        }
-
-        // Details are complete! Build final link and payload
+        // Always use the primary link: /pay/:identifier
         const origin = window.location.origin;
         const identifier =
           userPaymentData.identifier ||
           personal?.username ||
           personal?.publicId ||
           "";
-        const slug =
-          matchedMethod.id ||
-          matchedMethod.customSlug ||
-          matchedMethod.provider ||
-          targetProvider;
-        const isPrimaryActive = matchedMethod.id === userPaymentData.activeId;
-        const isPrimaryNoSub =
-          !userPaymentData.hasPaymentPlus && isPrimaryActive;
 
-        let effectiveLink = targetLinkParam;
-        if (!effectiveLink) {
-          effectiveLink = `${origin}/pay/${identifier}`;
-        }
+        const effectiveLink = `${origin}/pay/${identifier}`;
+
+        const fallbackAccountName =
+          matchedMethod?.accountName ||
+          accountNameParam ||
+          personal?.name ||
+          personal?.username ||
+          identifier;
+
+        const fallbackWalletNumber =
+          matchedMethod?.walletNumber ||
+          walletNumberParam ||
+          "";
 
         customDesignPayload = {
           isPaymentCard: true,
           walletProvider: targetProvider,
-          walletName: matchedMethod.name || walletNameParam || provDisplayName,
-          walletNumber: matchedMethod.walletNumber || walletNumberParam || "",
-          accountName: matchedMethod.accountName || accountNameParam || "",
+          walletName: matchedMethod?.name || walletNameParam || provDisplayName,
+          walletNumber: fallbackWalletNumber,
+          accountName: fallbackAccountName,
           targetLink: effectiveLink,
           cardDesign:
             typeof productToAdd.name === "object"
@@ -567,19 +532,7 @@ export default function ProductsPage({ t, personal, onOrder, onOpenCart, onOpenC
       finalColor
     );
 
-    const Swal = (await import("sweetalert2")).default;
-    Swal.fire({
-      toast: true,
-      position: "top",
-      icon: "success",
-      title: isArabic ? "تمت إضافة الكارت للسلة بنجاح!" : "Added to cart!",
-      showConfirmButton: false,
-      timer: 2000,
-      timerProgressBar: true,
-      background: "#111827",
-      color: "#fff",
-      iconColor: "#10B981",
-    });
+    toast.success(isArabic ? "تمت إضافة المنتج إلى السلة" : "Added to cart");
 
     return true;
   };

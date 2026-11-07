@@ -218,14 +218,21 @@ const getPaymentMethods = asyncHandler(async (req, res) => {
       .catch(() => null),
   ]);
 
-  const hasPaymentPlus = Boolean(
-    user.paymentPlusActive ||
-    (activeSub &&
-     (activeSub.planId?.key === "payment_plus" ||
-      activeSub.planId?.key === "pro" ||
-      activeSub.planId?.features?.get?.("unifiedPaymentHub") === true ||
-      activeSub.planId?.features?.unifiedPaymentHub === true))
-  );
+  let hasPaymentPlus = false;
+  if (user.paymentPlusOverride === "enabled") {
+    hasPaymentPlus = true;
+  } else if (user.paymentPlusOverride === "disabled") {
+    hasPaymentPlus = false;
+  } else {
+    hasPaymentPlus = Boolean(
+      user.paymentPlusActive ||
+      (activeSub &&
+       (activeSub.planId?.key === "payment_plus" ||
+        activeSub.planId?.key === "pro" ||
+        activeSub.planId?.features?.get?.("unifiedPaymentHub") === true ||
+        activeSub.planId?.features?.unifiedPaymentHub === true))
+    );
+  }
 
   res.json({
     user: {

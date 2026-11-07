@@ -1,6 +1,7 @@
 import { useGlobalLanguage } from "../../context/GlobalLanguageContext.jsx";
 import React, { useEffect, useState, useMemo } from "react";
 import { Link } from "react-router-dom";
+import toast from "react-hot-toast";
 import { AnimatePresence, motion } from "framer-motion";
 import { formatMoney, loadStoreProducts, loadStoreCategories } from "./storeApi.js";
 import { useCart } from "../../context/CartContext.jsx";
@@ -303,20 +304,7 @@ export default function ProductsPage() {
                                 selectedImage: chosenImg,
                                 selectedColor: cardColor,
                               }, 1, null, null, cardColor);
-                              import("sweetalert2").then((Swal) => {
-                                Swal.default.fire({
-                                  toast: true,
-                                  position: "top",
-                                  icon: "success",
-                                  title: language === "ar" ? "تمت إضافة المنتج للسلة بنجاح!" : (t("store.addedToCart") || "Added to cart!"),
-                                  showConfirmButton: false,
-                                  timer: 2000,
-                                  timerProgressBar: true,
-                                  background: "#111827",
-                                  color: "#fff",
-                                  iconColor: "#10B981",
-                                });
-                              });
+                              toast.success(language === "ar" ? "تمت إضافة المنتج إلى السلة" : (t("store.addedToCart") || "Added to cart"));
                             }}
                             className="w-10 h-10 rounded-full bg-[#111827] text-white flex items-center justify-center hover:bg-black hover:scale-105 active:scale-95 transition-all shadow-sm relative z-20 cursor-pointer"
                             title={t("store.buyNow")}

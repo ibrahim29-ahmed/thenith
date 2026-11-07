@@ -268,18 +268,11 @@ const resolvePublicWallet = asyncHandler(async (req, res) => {
   }
 
   const pageSettings = user.paymentPageSettings || {};
-  let effectiveCover = pageSettings.coverImage || user.coverImage || "";
-  let effectiveAvatar = pageSettings.avatar || user.avatar || "";
+  // Standalone payment page branding: strictly use paymentPageSettings, do NOT fallback to user profile / activeCard
+  let effectiveCover = pageSettings.coverImage || "";
+  let effectiveAvatar = pageSettings.avatar || "";
   let effectiveDisplayName = pageSettings.displayName || user.name || "";
   let effectiveBio = pageSettings.description || "";
-
-  if ((!effectiveCover || !effectiveAvatar) && user.activeCardId) {
-    const activeCard = await Card.findById(user.activeCardId).select("coverImage avatar").lean().catch(() => null);
-    if (activeCard) {
-      if (!effectiveCover && activeCard.coverImage) effectiveCover = activeCard.coverImage;
-      if (!effectiveAvatar && activeCard.avatar) effectiveAvatar = activeCard.avatar;
-    }
-  }
 
   const methods = Array.isArray(user.paymentMethods) ? user.paymentMethods : [];
 
@@ -293,14 +286,21 @@ const resolvePublicWallet = asyncHandler(async (req, res) => {
     .lean()
     .catch(() => null);
 
-  const hasPaymentPlus = Boolean(
-    user.paymentPlusActive ||
-    (activeSub &&
-     (activeSub.planId?.key === "payment_plus" ||
-      activeSub.planId?.key === "pro" ||
-      activeSub.planId?.features?.get?.("unifiedPaymentHub") === true ||
-      activeSub.planId?.features?.unifiedPaymentHub === true))
-  );
+  let hasPaymentPlus = false;
+  if (user.paymentPlusOverride === "enabled") {
+    hasPaymentPlus = true;
+  } else if (user.paymentPlusOverride === "disabled") {
+    hasPaymentPlus = false;
+  } else {
+    hasPaymentPlus = Boolean(
+      user.paymentPlusActive ||
+      (activeSub &&
+       (activeSub.planId?.key === "payment_plus" ||
+        activeSub.planId?.key === "pro" ||
+        activeSub.planId?.features?.get?.("unifiedPaymentHub") === true ||
+        activeSub.planId?.features?.unifiedPaymentHub === true))
+    );
+  }
 
   // Unified hub access policy:
   // Requires user to have enabled unified hub in payment page settings AND has active Payment Plus!

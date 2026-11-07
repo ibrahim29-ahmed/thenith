@@ -60,7 +60,7 @@ async function getSubscriptionState(userId, includeUsage = false) {
     })(),
     includeUsage ? Usage.findOne({ userId, month }).lean() : Promise.resolve(null),
     includeUsage ? Card.countDocuments({ userId }) : Promise.resolve(undefined),
-    User.findById(userId).select("paymentPlusActive").lean(),
+    User.findById(userId).select("paymentPlusActive paymentPlusOverride").lean(),
   ]);
 
   const isExpired =
@@ -77,10 +77,17 @@ async function getSubscriptionState(userId, includeUsage = false) {
       : { key: "free", features: {}, limits: {} };
   const planKey = (isEntitled && definition.key) ? definition.key : (definition.key === "pro" ? "pro" : "free");
 
-  const isPaymentPlusActive = Boolean(
-    userDoc?.paymentPlusActive ||
-    (isEntitled && (definition.key === "payment_plus" || definition.key === "pro"))
-  );
+  let isPaymentPlusActive = false;
+  if (userDoc?.paymentPlusOverride === "enabled") {
+    isPaymentPlusActive = true;
+  } else if (userDoc?.paymentPlusOverride === "disabled") {
+    isPaymentPlusActive = false;
+  } else {
+    isPaymentPlusActive = Boolean(
+      userDoc?.paymentPlusActive ||
+      (isEntitled && (definition.key === "payment_plus" || definition.key === "pro"))
+    );
+  }
 
   const brUsed = usageDoc?.businessRequests || 0;
 

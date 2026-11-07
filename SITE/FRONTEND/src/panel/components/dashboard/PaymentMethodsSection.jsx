@@ -565,8 +565,7 @@ export default function PaymentMethodsSection({
       {/* ── Top Header ── */}
       <div className="flex flex-col justify-between gap-4 rounded-[20px] bg-white p-3 shadow-sm dark:bg-slate-950/45 sm:flex-row sm:items-center sm:rounded-[24px] sm:p-4 md:bg-transparent md:p-0 md:shadow-none">
         <div className="min-w-0">
-          <h1 className="text-[clamp(1.35rem,5vw,1.5rem)] font-black text-slate-900 dark:text-white flex items-center gap-2.5">
-            <Wallet className="w-6 h-6 text-indigo-600 dark:text-indigo-400" />
+          <h1 className="text-[clamp(1.35rem,5vw,1.5rem)] font-black text-slate-900 dark:text-white">
             <span>{isAr ? headerInfo.titleAr : headerInfo.titleEn}</span>
           </h1>
           <p className="mt-1 text-sm leading-6 text-slate-500 dark:text-slate-400">
@@ -592,7 +591,7 @@ export default function PaymentMethodsSection({
           </button>
           <button
             onClick={() => setIsAddModalOpen(true)}
-            className="flex min-h-11 flex-1 sm:flex-initial items-center justify-center gap-2 rounded-xl bg-indigo-600 px-4 py-2.5 text-xs sm:text-sm font-bold text-white transition-all hover:bg-indigo-700 shadow-sm whitespace-nowrap cursor-pointer"
+            className="flex min-h-11 flex-1 sm:flex-initial items-center justify-center gap-2 rounded-xl bg-slate-900 hover:bg-black dark:bg-white dark:text-slate-900 dark:hover:bg-slate-100 px-4 py-2.5 text-xs sm:text-sm font-bold text-white transition-all shadow-sm whitespace-nowrap cursor-pointer"
           >
             <Plus className="h-4 w-4 shrink-0" />
             <span>{isAr ? "إضافة وسيلة دفع" : "Add Payment Method"}</span>
@@ -624,8 +623,7 @@ export default function PaymentMethodsSection({
               <div className="min-w-0 flex-1">
                 {/* Header Row: Title */}
                 <div className="flex items-center gap-2 mb-1.5 flex-wrap">
-                  <h3 className="text-sm font-black text-slate-900 dark:text-white flex items-center gap-2">
-                    <Link2 className="h-4 w-4 text-indigo-600 dark:text-indigo-400 shrink-0" />
+                  <h3 className="text-sm font-black text-slate-900 dark:text-white">
                     <span>{isAr ? "اللينك الأساسي للكارت" : "Primary Card Link"}</span>
                   </h3>
                 </div>
@@ -664,7 +662,7 @@ export default function PaymentMethodsSection({
                   className={`flex h-10 items-center justify-center gap-1.5 rounded-xl px-4 text-xs font-bold transition-all shadow-sm cursor-pointer ${
                     copiedId === "primary_link"
                       ? "bg-emerald-600 text-white"
-                      : "bg-indigo-600 hover:bg-indigo-700 text-white"
+                      : "bg-slate-900 hover:bg-black dark:bg-white dark:text-slate-900 dark:hover:bg-slate-100 text-white"
                   }`}
                 >
                   {copiedId === "primary_link" ? (
@@ -749,9 +747,8 @@ export default function PaymentMethodsSection({
                         navigate("/u/subscriptions");
                       }
                     }}
-                    className="flex h-10 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-amber-600 to-indigo-600 hover:from-amber-500 hover:to-indigo-500 px-4 text-xs font-black text-white transition-all shadow-md cursor-pointer"
+                    className="flex h-10 items-center justify-center rounded-xl bg-slate-900 hover:bg-black dark:bg-white dark:text-slate-900 dark:hover:bg-slate-100 px-5 text-xs font-bold text-white transition-all shadow-sm cursor-pointer"
                   >
-                    <Sparkles className="h-4 w-4" />
                     <span>{isAr ? "تصفح الباقات" : "Browse Plans"}</span>
                   </button>
                 )}
@@ -781,7 +778,7 @@ export default function PaymentMethodsSection({
           </p>
           <button
             onClick={() => setIsAddModalOpen(true)}
-            className="mt-5 inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-5 py-2.5 text-sm font-bold text-white hover:bg-indigo-700 shadow-sm cursor-pointer"
+            className="mt-5 inline-flex items-center gap-2 rounded-xl bg-slate-900 hover:bg-black dark:bg-white dark:text-slate-900 dark:hover:bg-slate-100 px-5 py-2.5 text-sm font-bold text-white shadow-sm cursor-pointer transition-all"
           >
             <Plus className="h-4 w-4" />
             <span>{isAr ? "إضافة أول محفظة" : "Add First Wallet"}</span>
@@ -799,11 +796,17 @@ export default function PaymentMethodsSection({
             return (
               <div
                 key={method.id}
-                className={`rounded-[22px] border p-4 text-end shadow-sm transition-all hover:shadow-md dark:bg-slate-950/45 sm:p-5 ltr:text-left flex flex-col justify-between ${
+                onClick={() => {
+                  if (!isSelected) {
+                    handleSelectActive(method.id);
+                  }
+                }}
+                className={`rounded-[22px] border p-4 text-end shadow-sm transition-all hover:shadow-md dark:bg-slate-950/45 sm:p-5 ltr:text-left flex flex-col justify-between cursor-pointer ${
                   isSelected
                     ? "border-emerald-300 bg-emerald-50/30 dark:border-emerald-800/60 dark:bg-emerald-950/10 ring-1 ring-emerald-200/50 dark:ring-emerald-900/30"
-                    : "border-slate-100 hover:border-slate-200 dark:border-slate-900 dark:hover:border-slate-800 bg-white"
+                    : "border-slate-100 hover:border-slate-200 hover:bg-slate-50/50 dark:border-slate-900 dark:hover:border-slate-800 dark:hover:bg-slate-900/20 bg-white"
                 }`}
+                title={!isSelected ? (isAr ? "اضغط لتعيين هذه الوسيلة كأساسية" : "Click to set as primary") : undefined}
               >
                 {/* ── Top Header of Card: Provider Badge + Primary Badge + Actions ── */}
                 <div>
@@ -812,30 +815,23 @@ export default function PaymentMethodsSection({
                       <span className="rounded-md bg-slate-100 px-2.5 py-1 text-[11px] font-bold text-slate-600 dark:bg-slate-800 dark:text-slate-300">
                         {prov[isAr ? "badge" : "nameEn"]}
                       </span>
-                      {isSelected ? (
+                      {isSelected && (
                         <span className="flex items-center gap-1 rounded-md bg-emerald-100 px-2 py-0.5 text-[10px] font-black text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-400">
                           <Star className="h-3 w-3 fill-current" />
                           <span>{isAr ? "الأساسية" : "Primary"}</span>
                         </span>
-                      ) : (
-                        <button
-                          type="button"
-                          onClick={() => handleSelectActive(method.id)}
-                          className="flex items-center gap-1 rounded-md border border-slate-200 bg-white hover:border-emerald-300 hover:bg-emerald-50 hover:text-emerald-700 px-2 py-0.5 text-[10px] font-bold text-slate-500 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400 dark:hover:border-emerald-900/50 dark:hover:bg-emerald-950/40 dark:hover:text-emerald-300 transition-all cursor-pointer"
-                          title={isAr ? "تحديد هذه الوسيلة كأساسية" : "Set as primary"}
-                        >
-                          <Star className="h-3 w-3 text-slate-400 hover:text-emerald-600" />
-                          <span>{isAr ? "تعيين كأساسية" : "Set Primary"}</span>
-                        </button>
                       )}
                     </div>
 
                     {/* Top Actions: زر تعديل + زر حذف */}
-                    <div className="flex items-center gap-1.5">
+                    <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
                       {/* زر تعديل من فوق */}
                       <button
                         type="button"
-                        onClick={() => openEditModal(method)}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          openEditModal(method);
+                        }}
                         className="flex items-center gap-1.5 rounded-lg bg-indigo-50 px-2.5 py-1 text-xs font-bold text-indigo-600 hover:bg-indigo-100 dark:bg-indigo-950/50 dark:text-indigo-400 dark:hover:bg-indigo-900/60 transition-colors cursor-pointer"
                         title={isAr ? "تعديل بيانات المحفظة" : "Edit Details"}
                       >
@@ -846,9 +842,10 @@ export default function PaymentMethodsSection({
                       {/* زر حذف */}
                       <button
                         type="button"
-                        onClick={() =>
-                          handleDeleteMethod(method.id, method.name)
-                        }
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDeleteMethod(method.id, method.name);
+                        }}
                         className="flex h-7 w-7 items-center justify-center rounded-lg text-slate-400 hover:bg-rose-50 hover:text-rose-500 dark:hover:bg-rose-950/40 dark:hover:text-rose-400 transition-colors cursor-pointer"
                         title={isAr ? "حذف وسيلة الدفع" : "Delete"}
                       >
@@ -859,9 +856,13 @@ export default function PaymentMethodsSection({
 
                   {/* ── Card Main: Icon + Name + Details ── */}
                   <div
-                    onClick={() => openEditModal(method)}
-                    className="mb-4 flex items-start gap-3.5 cursor-pointer group rounded-xl p-1 -m-1 hover:bg-slate-50 dark:hover:bg-slate-900/40 transition-colors"
-                    title={isAr ? "اضغط لتعديل بيانات المحفظة" : "Click to edit"}
+                    onClick={(e) => {
+                      if (!isSelected) {
+                        e.stopPropagation();
+                        handleSelectActive(method.id);
+                      }
+                    }}
+                    className="mb-4 flex items-start gap-3.5 group rounded-xl p-1 -m-1"
                   >
                     {/* Large Wallet Icon */}
                     <div className="flex h-14 w-14 sm:h-16 sm:w-16 shrink-0 items-center justify-center rounded-2xl bg-white p-1 sm:p-1.5 border border-slate-200/90 shadow-sm overflow-hidden">
@@ -944,7 +945,7 @@ export default function PaymentMethodsSection({
                     href={effectiveMethodLink}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="flex h-10 min-w-0 flex-1 items-center justify-center gap-1.5 rounded-xl bg-indigo-600 px-3 text-xs font-bold text-white hover:bg-indigo-700 transition-colors shadow-xs"
+                    className="flex h-10 min-w-0 flex-1 items-center justify-center gap-1.5 rounded-xl bg-slate-900 hover:bg-black dark:bg-white dark:text-slate-900 dark:hover:bg-slate-100 px-3 text-xs font-bold text-white transition-colors shadow-xs"
                   >
                     <ExternalLink className="h-4 w-4" />
                     <span>{isAr ? "فتح الرابط" : "Open Link"}</span>
@@ -961,17 +962,6 @@ export default function PaymentMethodsSection({
                       <ExternalLink className="h-4 w-4" />
                     </button>
                   )}
-                </div>
-
-                {/* ── Order Card ── */}
-                <div className="pt-2.5 border-t border-slate-100 dark:border-slate-900 mt-2">
-                  <button
-                    type="button"
-                    onClick={() => handleOrderPaymentCard(method)}
-                    className="flex h-10 w-full items-center justify-center rounded-xl bg-slate-900 hover:bg-black dark:bg-slate-800 dark:hover:bg-slate-700 text-white px-4 text-xs font-bold shadow-xs transition-all cursor-pointer"
-                  >
-                    <span>{isAr ? "إنشاء كارت دفع" : "Order Payment Card"}</span>
-                  </button>
                 </div>
               </div>
             );
@@ -1171,7 +1161,7 @@ export default function PaymentMethodsSection({
                   <button
                     type="submit"
                     disabled={isSubmitting || !addFormData.name.trim()}
-                    className="flex items-center justify-center gap-1.5 rounded-xl bg-indigo-600 px-5 py-2.5 text-xs font-bold text-white hover:bg-indigo-700 transition-all disabled:opacity-50 shadow-sm cursor-pointer"
+                    className="flex items-center justify-center gap-1.5 rounded-xl bg-slate-900 hover:bg-black dark:bg-white dark:text-slate-900 dark:hover:bg-slate-100 px-5 py-2.5 text-xs font-bold text-white transition-all disabled:opacity-50 shadow-sm cursor-pointer"
                   >
                     {isSubmitting ? (
                       <Loader2 className="h-4 w-4 animate-spin" />
@@ -1324,7 +1314,7 @@ export default function PaymentMethodsSection({
                   <button
                     type="submit"
                     disabled={isSubmitting || !editFormData.name.trim()}
-                    className="flex items-center justify-center gap-1.5 rounded-xl bg-indigo-600 px-5 py-2.5 text-xs font-bold text-white hover:bg-indigo-700 transition-all disabled:opacity-50 shadow-sm cursor-pointer"
+                    className="flex items-center justify-center gap-1.5 rounded-xl bg-slate-900 hover:bg-black dark:bg-white dark:text-slate-900 dark:hover:bg-slate-100 px-5 py-2.5 text-xs font-bold text-white transition-all disabled:opacity-50 shadow-sm cursor-pointer"
                   >
                     {isSubmitting ? (
                       <Loader2 className="h-4 w-4 animate-spin" />
@@ -1361,7 +1351,7 @@ export default function PaymentMethodsSection({
               {/* Header */}
               <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4 dark:border-slate-800 shrink-0">
                 <div className="flex items-center gap-2.5">
-                  <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600 dark:bg-indigo-950/50 dark:text-indigo-400">
+                  <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-slate-100 text-slate-800 dark:bg-slate-800 dark:text-slate-200">
                     <Settings className="h-5 w-5" />
                   </div>
                   <div>
@@ -1370,8 +1360,8 @@ export default function PaymentMethodsSection({
                     </h3>
                     <p className="text-[11px] text-slate-400">
                       {isAr
-                        ? "تخصيص مظهر صفحة عرض وسائل الدفع فقط"
-                        : "Customize the payment page appearance only"}
+                        ? "تخصيص الصورة والغلاف والبيانات لصفحة الدفع فقط (منفصلة تماماً عن بروفايلك الشخصي)"
+                        : "Customize branding for the payment page only (completely separate from personal profile)"}
                     </p>
                   </div>
                 </div>
@@ -1440,7 +1430,7 @@ export default function PaymentMethodsSection({
                         type="button"
                         disabled={isUploadingAvatar}
                         onClick={() => avatarInputRef.current?.click()}
-                        className="flex items-center gap-1.5 rounded-lg bg-indigo-50 px-3 py-1.5 text-xs font-bold text-indigo-600 hover:bg-indigo-100 dark:bg-indigo-950/50 dark:text-indigo-400 dark:hover:bg-indigo-900/60 transition-colors cursor-pointer disabled:opacity-50"
+                        className="flex items-center gap-1.5 rounded-lg bg-slate-100 px-3 py-1.5 text-xs font-bold text-slate-800 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700 transition-colors cursor-pointer disabled:opacity-50"
                       >
                         {isUploadingAvatar ? (
                           <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -1520,7 +1510,7 @@ export default function PaymentMethodsSection({
                       type="button"
                       disabled={isUploadingCover}
                       onClick={() => coverInputRef.current?.click()}
-                      className="flex items-center gap-1.5 rounded-lg bg-indigo-50 px-3 py-1.5 text-xs font-bold text-indigo-600 hover:bg-indigo-100 dark:bg-indigo-950/50 dark:text-indigo-400 dark:hover:bg-indigo-900/60 transition-colors cursor-pointer disabled:opacity-50"
+                      className="flex items-center gap-1.5 rounded-lg bg-slate-100 px-3 py-1.5 text-xs font-bold text-slate-800 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700 transition-colors cursor-pointer disabled:opacity-50"
                     >
                       {isUploadingCover ? (
                         <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -1623,7 +1613,7 @@ export default function PaymentMethodsSection({
                         setIsSettingsSaving(false);
                       }
                     }}
-                    className="flex items-center justify-center gap-1.5 rounded-xl bg-indigo-600 px-5 py-2.5 text-xs font-bold text-white hover:bg-indigo-700 transition-all disabled:opacity-50 shadow-sm cursor-pointer"
+                    className="flex items-center justify-center gap-1.5 rounded-xl bg-slate-900 hover:bg-black dark:bg-white dark:text-slate-900 dark:hover:bg-slate-100 px-5 py-2.5 text-xs font-bold text-white transition-all disabled:opacity-50 shadow-sm cursor-pointer"
                   >
                     {isSettingsSaving ? (
                       <Loader2 className="h-4 w-4 animate-spin" />

@@ -36,5 +36,6 @@ try {
   process.once("SIGINT", () => shutdown("SIGINT"));
   process.once("SIGTERM", () => shutdown("SIGTERM"));
 } catch (error) {
+  console.error("Fatal startup error in DASH backend:", error);
   process.exit(1);
 }

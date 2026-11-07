@@ -1,6 +1,7 @@
 import { useGlobalLanguage } from "../../context/GlobalLanguageContext.jsx";
 import React, { useEffect, useState, useMemo } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
+import toast from "react-hot-toast";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   ArrowRight,
@@ -194,20 +195,7 @@ export default function ProductDetailsPage() {
     setAddedFeedback(true);
     setTimeout(() => setAddedFeedback(false), 2200);
 
-    import("sweetalert2").then((Swal) => {
-      Swal.default.fire({
-        toast: true,
-        position: "top",
-        icon: "success",
-        title: isAr ? "تمت إضافة المنتج للسلة بنجاح!" : (t("store.addedToCart") || "Added to cart successfully!"),
-        showConfirmButton: false,
-        timer: 2000,
-        timerProgressBar: true,
-        background: "#111827",
-        color: "#fff",
-        iconColor: "#10B981",
-      });
-    });
+    toast.success(isAr ? "تمت إضافة المنتج إلى السلة" : (t("store.addedToCart") || "Added to cart"));
   };
 
   const handleBuyNow = () => {
