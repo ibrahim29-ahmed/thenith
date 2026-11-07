@@ -1,8 +1,21 @@
 @import "tailwindcss";
 
 @theme {
-  --font-sans: var(--app-font, "Poppins"), ui-sans-serif, system-ui, sans-serif;
+  --font-sans: var(--app-font, "IBM Plex Sans Arabic", "Poppins"), ui-sans-serif, system-ui, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+  --color-navy-900: #0b1020;
+  --color-indigo-800: #1b2a8a;
+  --color-brand-green: #10b981;
+  --color-green-700: #047857;
+  --color-green-50: #e9f8f2;
+  --color-gold-border: #f3dfa8;
+  --color-gold-50: #fff6e0;
+  --color-gold-icon-bg: #fdeebd;
+  --color-gold-text: #8a5a00;
+  --color-page-bg: #f5f6fb;
+  --color-card-border: #e6e8f0;
+  --color-muted-text: #5b6278;
+  --color-dashed-border: #d5d9e6;
 }
 
 @variant dark (&:where(.dark, .dark *, .force-dark, .force-dark *):not(:where(.force-light, .force-light *)));
@@ -43,6 +56,40 @@ body {
     radial-gradient(at 0% 0%, rgba(20, 30, 55, 0.15) 0px, transparent 50%),
     radial-gradient(at 100% 100%, rgba(15, 23, 42, 0.2) 0px, transparent 50%);
   color: #f8fafc;
+}
+
+/* Global Dark Mode Input Visibility & Contrast Guarantee */
+.dark input,
+.dark textarea,
+.dark select {
+  color: #f8fafc !important;
+  caret-color: #818cf8 !important;
+}
+
+.dark input:focus,
+.dark textarea:focus,
+.dark select:focus {
+  background-color: #0f172a !important;
+  color: #ffffff !important;
+}
+
+.dark input::placeholder,
+.dark textarea::placeholder {
+  color: #64748b !important;
+}
+
+.dark input:-webkit-autofill,
+.dark input:-webkit-autofill:hover, 
+.dark input:-webkit-autofill:focus,
+.dark textarea:-webkit-autofill,
+.dark textarea:-webkit-autofill:hover,
+.dark textarea:-webkit-autofill:focus,
+.dark select:-webkit-autofill,
+.dark select:-webkit-autofill:hover,
+.dark select:-webkit-autofill:focus {
+  -webkit-text-fill-color: #f8fafc !important;
+  -webkit-box-shadow: 0 0 0px 1000px #0f172a inset !important;
+  transition: background-color 5000s ease-in-out 0s !important;
 }
 
 .glass-panel {
@@ -154,6 +201,11 @@ div:where(.swal2-container) .swal2-cancel {
 
 body.loading-screen-active .global-support-widget {
   display: none !important;
+}
+
+@keyframes toast-countdown {
+  from { width: 100%; }
+  to { width: 0%; }
 }
 
 
@@ -316,3 +368,10 @@ body.loading-screen-active .global-support-widget {
 }
 
 
+
+
+/* Force all numbers to render in English / Latin numerals (0-9) */
+*, *::before, *::after {
+  font-variant-numeric: lining-nums tabular-nums;
+  font-feature-settings: "lnum" 1, "tnum" 1;
+}

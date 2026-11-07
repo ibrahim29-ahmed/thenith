@@ -27,9 +27,15 @@ const subscriptionSchema = new mongoose.Schema(
     startedAt: { type: Date, required: true },
     expiresAt: { type: Date, default: null, index: true },
     cancelledAt: { type: Date, default: null },
+    cancelledBy: {
+      type: String,
+      enum: ["user", "admin", "system", null],
+      default: null,
+    },
+    cancellationReason: { type: String, default: "" },
     provider: {
       type: String,
-      enum: ["manual", "fawaterak"],
+      enum: ["manual", "fawaterak", "free"],
       default: "manual",
     },
     providerSubscriptionId: { type: String, default: null },
@@ -40,6 +46,17 @@ const subscriptionSchema = new mongoose.Schema(
     paymentMethod: { type: String, default: null }, // "Fawry", "Visa-Mastercard", etc.
     fawaterakRef: { type: String, default: null }, // Fawry reference code, etc.
     transactionId: { type: String, default: null }, // Fawaterak invoice_id / transaction_id
+    autoRenew: { type: Boolean, default: true },
+    savedCard: {
+      cardToken: { type: String, default: null },
+      cardTokenUniqueId: { type: String, default: null },
+      cardBrand: { type: String, default: null },
+      customerCard: { type: String, default: null },
+      savedAt: { type: Date, default: null },
+    },
+    lastRenewalAt: { type: Date, default: null },
+    renewalFailCount: { type: Number, default: 0 },
+    expiryRemindersSent: { type: [Number], default: [] }, // Tracks [7, 3, 1] days reminders sent
   },
   { timestamps: true },
 );

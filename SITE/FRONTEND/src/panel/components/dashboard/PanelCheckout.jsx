@@ -22,7 +22,7 @@ import { toast } from "../../../util/toast";
 import api from "../../../api/index.js";
 
 
-export default function PanelCheckout({ t, onBack }) {
+export default function PanelCheckout({ t, onBack, onGoToStore }) {
   const navigate = useNavigate();
   const { cart, totalPrice, clearCart } = useCart();
   const { user } = useAuth();
@@ -38,36 +38,72 @@ export default function PanelCheckout({ t, onBack }) {
   const [appliedCoupon, setAppliedCoupon] = useState(null);
   const [address, setAddress] = useState("");
   const [paymentMethod, setPaymentMethod] = useState("online");
+  const [codEnabled, setCodEnabled] = useState(false);
+  const [pageLoading, setPageLoading] = useState(true);
 
   const isArabic = t("home") === "الرئيسية";
 
   useEffect(() => {
-    if (user) {
-      if (!phone) setPhone(user.phone || "");
-      if (!address) setAddress(user.address || "");
-    }
-  }, [user]);
-
-  useEffect(() => {
     let mounted = true;
-    getShippingRates().then((rates) => {
-      if (mounted && rates.length > 0) {
+
+    const loadAllCheckoutData = async () => {
+      try {
+        const [methodsRes, ratesRes] = await Promise.all([
+          api.payment.getMethods().catch(() => ({})),
+          getShippingRates().catch(() => []),
+        ]);
+
+        if (!mounted) return;
+
+        // 1. Process payment methods & COD availability
+        const isEnabled =
+          methodsRes?.cod_enabled !== undefined
+            ? Boolean(methodsRes.cod_enabled)
+            : Boolean(methodsRes?.globalSettings?.cod_enabled);
+        setCodEnabled(isEnabled);
+        if (!isEnabled && paymentMethod === "cash_on_delivery") {
+          setPaymentMethod("online");
+        }
+
+        // 2. Process shipping rates & pre-select user governorate
+        const rates = Array.isArray(ratesRes) ? ratesRes : [];
         setShippingRates(rates);
-        if (user && user.city) {
-          const matchedRate = rates.find(
-            (r) => r.governorate === user.city || r.governorateAr === user.city,
-          );
-          if (matchedRate) {
-            setSelectedGovernorate(matchedRate._id);
-            setShippingCost(matchedRate.cost);
+
+        if (user) {
+          if (user.phone) setPhone((prev) => prev || user.phone);
+          if (user.address) setAddress((prev) => prev || user.address);
+          if (user.city && rates.length > 0) {
+            const matchedRate = rates.find(
+              (r) => r.governorate === user.city || r.governorateAr === user.city
+            );
+            if (matchedRate) {
+              setSelectedGovernorate(matchedRate._id);
+              setShippingCost(matchedRate.cost);
+            }
           }
         }
+      } catch (err) {
+        console.error("Error loading checkout data:", err);
+      } finally {
+        if (mounted) {
+          setPageLoading(false);
+        }
       }
-    });
+    };
+
+    loadAllCheckoutData();
+
     return () => {
       mounted = false;
     };
   }, [user]);
+
+  useEffect(() => {
+    if (user && !pageLoading) {
+      if (user.phone && !phone) setPhone(user.phone);
+      if (user.address && !address) setAddress(user.address);
+    }
+  }, [user, pageLoading]);
 
   const handleGovernorateChange = (e) => {
     const govId = e.target.value;
@@ -131,10 +167,15 @@ export default function PanelCheckout({ t, onBack }) {
       : "";
 
     try {
+      const effectivePaymentMethod = finalTotal <= 0 ? "free" : paymentMethod;
       const result = await createOrder({
         items: cart.map((item) => ({
           productId: item.id,
           quantity: item.quantity,
+          selectedImage: item.selectedImage || item.image || "",
+          selectedImageId: item.selectedImageId || "",
+          image: item.selectedImage || item.image || "",
+          color: item.color || null,
           customDesign: item.customDesign || null,
           cartItemId: item.cartItemId || item.id,
         })),
@@ -145,15 +186,25 @@ export default function PanelCheckout({ t, onBack }) {
           address,
           city: cityName,
         },
-        paymentMethod,
+        paymentMethod: effectivePaymentMethod,
         couponCode: appliedCoupon?.code || null,
       });
+
+      if (effectivePaymentMethod === "cash_on_delivery" && !codEnabled) {
+        toast.error(
+          isArabic
+            ? "خيار الدفع عند الاستلام غير متاح حالياً."
+            : "Cash on delivery is currently unavailable."
+        );
+        setIsSubmitting(false);
+        return;
+      }
 
       if (result?.orderId) {
         try {
           localStorage.removeItem("thenith_custom_card_studio_state_v2");
         } catch (e) {}
-        if (paymentMethod === "cash_on_delivery") {
+        if (effectivePaymentMethod === "cash_on_delivery" || effectivePaymentMethod === "free" || result?.isFree) {
           clearCart();
           setIsSuccess(true);
           window.dispatchEvent(new CustomEvent("dashboard-action", {
@@ -163,7 +214,7 @@ export default function PanelCheckout({ t, onBack }) {
             },
           }));
         } else {
-          navigate(`/payment?type=order&orderId=${result.orderId}`);
+          navigate(`/payment?type=order&orderId=${result.orderId}&method=card`);
         }
       }
     } catch (err) {
@@ -187,10 +238,61 @@ export default function PanelCheckout({ t, onBack }) {
         </p>
         <button
           type="button"
-          onClick={onBack}
-          className="rounded-xl bg-slate-900 px-6 py-3 font-bold text-white transition-colors hover:bg-indigo-600 dark:bg-slate-800"
+          onClick={() => {
+            if (onGoToStore) {
+              onGoToStore();
+            } else if (onBack) {
+              onBack();
+            } else {
+              navigate("/u/products");
+            }
+          }}
+          className="rounded-xl bg-slate-900 px-6 py-3 font-bold text-white transition-colors hover:bg-indigo-600 dark:bg-slate-800 cursor-pointer"
         >
           {isArabic ? "العودة للمتجر" : "Back to store"}
+        </button>
+      </div>
+    );
+  }
+
+  if (pageLoading) {
+    return (
+      <div className="max-w-5xl mx-auto py-20 sm:py-28 flex flex-col items-center justify-center text-center">
+        <div className="w-16 h-16 rounded-3xl bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-100 dark:border-indigo-900/50 flex items-center justify-center mb-4 shadow-inner">
+          <Loader2 className="w-8 h-8 animate-spin text-indigo-600 dark:text-indigo-400" />
+        </div>
+        <h3 className="text-lg font-black text-slate-800 dark:text-white mb-1">
+          {isArabic ? "جاري تجهيز صفحة الدفع..." : "Preparing checkout..."}
+        </h3>
+        <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 font-medium animate-pulse">
+          {isArabic
+            ? "يتم تحميل طرق الدفع وأسعار الشحن وتفاصيل طلبك..."
+            : "Loading payment methods, shipping rates and order details..."}
+        </p>
+      </div>
+    );
+  }
+
+  if (cart.length === 0 && !isSuccess) {
+    return (
+      <div className="max-w-5xl mx-auto py-16 sm:py-20 text-center bg-white dark:bg-slate-950 rounded-2xl sm:rounded-[32px] border border-slate-200 dark:border-slate-800 p-8 shadow-sm">
+        <p className="text-slate-600 dark:text-slate-400 font-bold mb-4">
+          {isArabic ? "سلة المشتريات فارغة حالياً." : "Your shopping cart is currently empty."}
+        </p>
+        <button
+          type="button"
+          onClick={() => {
+            if (onGoToStore) {
+              onGoToStore();
+            } else if (onBack) {
+              onBack();
+            } else {
+              navigate("/u/products");
+            }
+          }}
+          className="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold text-sm transition-colors cursor-pointer"
+        >
+          {isArabic ? "تصفح المتجر" : "Browse store"}
         </button>
       </div>
     );
@@ -324,6 +426,19 @@ export default function PanelCheckout({ t, onBack }) {
               <label className="block text-xs sm:text-[13px] font-bold text-slate-700 dark:text-slate-300 mb-1.5">
                 {isArabic ? "طريقة الدفع" : "Payment Method"}
               </label>
+              {finalTotal <= 0 ? (
+                <div className="p-4 rounded-xl bg-emerald-50 border border-emerald-200 dark:bg-emerald-950/40 dark:border-emerald-800 flex items-center gap-3">
+                  <CheckCircle2 className="w-5 h-5 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                  <div>
+                    <span className="block font-bold text-emerald-900 dark:text-emerald-200 text-sm">
+                      {isArabic ? "هذا الطلب مجاني بالكامل (0 ج.م)" : "This order is 100% Free (0 EGP)"}
+                    </span>
+                    <span className="block text-xs text-emerald-700 dark:text-emerald-300 mt-0.5">
+                      {isArabic ? "لا يتطلب اختيار وسيلة دفع، سيتم تأكيد طلبك وشحنه فوراً." : "No payment gateway required, your order will be confirmed immediately."}
+                    </span>
+                  </div>
+                </div>
+              ) : (
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <label
                   className={`cursor-pointer rounded-xl border-2 p-4 transition-colors ${paymentMethod === "online" ? "border-indigo-600 bg-indigo-50/50 shadow-sm dark:bg-indigo-900/30" : "border-slate-200 hover:border-indigo-300 dark:border-slate-700"}`}
@@ -346,28 +461,31 @@ export default function PanelCheckout({ t, onBack }) {
                       : "The order is confirmed after full payment."}
                   </span>
                 </label>
-                <label
-                  className={`cursor-pointer rounded-xl border-2 p-4 transition-colors ${paymentMethod === "cash_on_delivery" ? "border-indigo-600 bg-indigo-50/50 shadow-sm dark:bg-indigo-900/30" : "border-slate-200 hover:border-indigo-300 dark:border-slate-700"}`}
-                >
-                  <span className="flex items-center gap-3 font-bold text-slate-900 dark:text-white">
-                    <input
-                      type="radio"
-                      name="checkoutPaymentMethod"
-                      value="cash_on_delivery"
-                      checked={paymentMethod === "cash_on_delivery"}
-                      onChange={() => setPaymentMethod("cash_on_delivery")}
-                      className="h-4 w-4 accent-indigo-600"
-                    />
-                    <Truck className="h-5 w-5 text-indigo-500" />
-                    {isArabic ? "دفع عند الاستلام" : "Cash on delivery"}
-                  </span>
-                  <span className="mt-2 block text-sm text-slate-500 dark:text-slate-400">
-                    {isArabic
-                      ? "يُحفظ الطلب بحالة غير مدفوعة لحين استلامه."
-                      : "The order is saved as unpaid until delivery."}
-                  </span>
-                </label>
+                {codEnabled && (
+                  <label
+                    className={`cursor-pointer rounded-xl border-2 p-4 transition-colors ${paymentMethod === "cash_on_delivery" ? "border-indigo-600 bg-indigo-50/50 shadow-sm dark:bg-indigo-900/30" : "border-slate-200 hover:border-indigo-300 dark:border-slate-700"}`}
+                  >
+                    <span className="flex items-center gap-3 font-bold text-slate-900 dark:text-white">
+                      <input
+                        type="radio"
+                        name="checkoutPaymentMethod"
+                        value="cash_on_delivery"
+                        checked={paymentMethod === "cash_on_delivery"}
+                        onChange={() => setPaymentMethod("cash_on_delivery")}
+                        className="h-4 w-4 accent-indigo-600"
+                      />
+                      <Truck className="h-5 w-5 text-indigo-500" />
+                      {isArabic ? "دفع عند الاستلام" : "Cash on delivery"}
+                    </span>
+                    <span className="mt-2 block text-sm text-slate-500 dark:text-slate-400">
+                      {isArabic
+                        ? "يُحفظ الطلب بحالة غير مدفوعة لحين استلامه."
+                        : "The order is saved as unpaid until delivery."}
+                    </span>
+                  </label>
+                )}
               </div>
+              )}
             </div>
           </div>
         </div>
@@ -498,6 +616,8 @@ export default function PanelCheckout({ t, onBack }) {
             >
               {isSubmitting ? (
                 <Loader2 className="w-5 h-5 animate-spin" />
+              ) : finalTotal <= 0 ? (
+                isArabic ? "تأكيد الطلب مجاناً" : "Confirm Free Order"
               ) : isArabic ? (
                 paymentMethod === "cash_on_delivery" ? (
                   "تأكيد الطلب"

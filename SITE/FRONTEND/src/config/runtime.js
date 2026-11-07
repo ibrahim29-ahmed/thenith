@@ -27,7 +27,7 @@ export const PUBLIC_BASE_URL = API_BASE_URL.replace(/\/api\/?$/, "/public");
 export const RUNTIME_CONFIG = {
   apiBaseUrl: API_BASE_URL,
   publicBaseUrl: PUBLIC_BASE_URL,
-  requestTimeout: Number(import.meta.env.VITE_API_TIMEOUT || 15000),
+  requestTimeout: Number(import.meta.env.VITE_API_TIMEOUT || 45000),
   withCredentials: true,
 };
 

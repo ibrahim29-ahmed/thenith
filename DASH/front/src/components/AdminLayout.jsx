@@ -1,14 +1,15 @@
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 import { LogOut, Bell, Search, ShieldCheck, X } from "lucide-react";
 import { useAdminAuth } from "../context/AdminAuthContext.jsx";
-import { useEffect } from "react";
+import { useState, useEffect } from "react";
 import DashboardLogo from "./DashboardLogo.jsx";
 import { DASHBOARD_NAV_ITEMS } from "../constants/navigation.js";
 import useDashboardNotifications from "../hooks/useDashboardNotifications.js";
+import { fetchSiteSettings } from "../services/adminApi.js";
 
 export default function AdminLayout() {
   const location = useLocation();
-  const { logout, adminUser } = useAdminAuth();
+  const { logout, adminUser, hasPermission, isSuperAdmin } = useAdminAuth();
   const {
     unreadTabCount,
     navNotificationCount,
@@ -16,14 +17,45 @@ export default function AdminLayout() {
     clearNotifications,
   } = useDashboardNotifications(location.pathname);
 
-  useEffect(() => {
-    document.title =
-      unreadTabCount > 0
-        ? `(${unreadTabCount}) Thenith | Admin`
-        : "Thenith | Admin";
-  }, [unreadTabCount]);
+  const [siteName, setSiteName] = useState(
+    () => localStorage.getItem("admin_site_name") || "Thenith"
+  );
 
-  const navItems = DASHBOARD_NAV_ITEMS;
+  useEffect(() => {
+    fetchSiteSettings()
+      .then((s) => {
+        if (s?.site_name) {
+          setSiteName(s.site_name);
+          localStorage.setItem("admin_site_name", s.site_name);
+        }
+      })
+      .catch(() => {});
+
+    const handleSiteNameUpdated = (e) => {
+      if (e.detail) {
+        setSiteName(e.detail);
+        localStorage.setItem("admin_site_name", e.detail);
+      }
+    };
+    window.addEventListener("site-name-updated", handleSiteNameUpdated);
+    return () => window.removeEventListener("site-name-updated", handleSiteNameUpdated);
+  }, []);
+
+  useEffect(() => {
+    const matchedItem = DASHBOARD_NAV_ITEMS.find((item) =>
+      item.path === "/" ? location.pathname === "/" : location.pathname.startsWith(item.path)
+    );
+    let pageLabel = matchedItem?.label || "لوحة التحكم";
+    if (location.pathname.startsWith("/cards/") && location.pathname !== "/cards") {
+      pageLabel = "تفاصيل الكارت الذكي";
+    }
+
+    const titleBase = `${pageLabel} | ${siteName}`;
+    document.title =
+      unreadTabCount > 0 ? `(${unreadTabCount}) ${titleBase}` : titleBase;
+  }, [location.pathname, unreadTabCount, siteName]);
+
+  const navItems = DASHBOARD_NAV_ITEMS.filter((item) => hasPermission(item.permission));
 
   return (
     <div
@@ -95,11 +127,11 @@ export default function AdminLayout() {
         {/* TOP HEADER */}
         <header className="h-20 bg-white border-b border-slate-200 px-8 flex items-center justify-between sticky top-0 z-40">
           <div className="relative w-96">
-            <Search className="w-5 h-5 text-slate-400 absolute end-4 top-1/2 -translate-y-1/2" />
+            <Search className="w-4 h-4 text-slate-400 absolute end-3.5 top-1/2 -translate-y-1/2" />
             <input
               type="text"
               placeholder="ابحث عن مستخدم، اشتراك، أو قسم..."
-              className="w-full bg-slate-100 border-none rounded-xl py-2.5 pe-12 ps-4 text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
+              className="w-full bg-slate-50 border border-slate-200/90 rounded-xl py-2.5 pe-11 ps-4 text-xs font-semibold text-slate-800 placeholder-slate-400 focus:bg-white focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 outline-none transition-all shadow-xs"
             />
           </div>
 
@@ -149,7 +181,7 @@ export default function AdminLayout() {
                     <p className="text-xs text-slate-500 mb-1">
                       {new Date(
                         latestMessage.createdAt || Date.now(),
-                      ).toLocaleTimeString("ar-EG", {
+                      ).toLocaleTimeString("ar-EG-u-nu-latn", {
                         hour: "2-digit",
                         minute: "2-digit",
                       })}
@@ -172,12 +204,16 @@ export default function AdminLayout() {
             <div className="flex items-center gap-3 ps-4 border-s border-slate-200">
               <div className="text-start">
                 <p className="text-sm font-bold text-slate-800">
-                  {adminUser?.username || "Admin"}
+                  {adminUser?.name || adminUser?.username || "Admin"}
                 </p>
-                <p className="text-xs text-slate-500">Super Admin</p>
+                <p className="text-xs text-slate-500 font-medium">
+                  {isSuperAdmin
+                    ? "المدير العام (Super Admin)"
+                    : (adminUser?.title || "مشرف محدد الصلاحيات")}
+                </p>
               </div>
-              <div className="w-10 h-10 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center font-bold text-lg uppercase">
-                {(adminUser?.username || "A")[0]}
+              <div className="w-10 h-10 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center font-bold text-lg uppercase shadow-sm border border-indigo-200">
+                {(adminUser?.name || adminUser?.username || "A")[0]}
               </div>
             </div>
           </div>

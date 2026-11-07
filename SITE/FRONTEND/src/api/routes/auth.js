@@ -7,10 +7,10 @@ export const authRoutes = {
       data: { email, purpose },
     }),
 
-  verifyCode: (email, code, purpose = "login") =>
+  verifyCode: (email, code, purpose = "login", referralCode = undefined) =>
     request("/auth/verify-code", {
       method: "POST",
-      data: { email, code, purpose },
+      data: { email, code, purpose, referralCode },
     }),
 
   completeRegistration: (payload = {}) =>
@@ -53,11 +53,11 @@ export const authRoutes = {
       data: { username },
     }),
 
-  googleAuth: (payload) => {
+  googleAuth: (payload, referralCode = undefined) => {
     const data =
       typeof payload === "string"
-        ? { credential: payload, token: payload }
-        : payload;
+        ? { credential: payload, token: payload, referralCode }
+        : { ...(payload || {}), referralCode };
     return request("/auth/google", {
       method: "POST",
       data,

@@ -32,6 +32,8 @@ const orderDraftSchema = new mongoose.Schema(
         name: { type: mongoose.Schema.Types.Mixed, required: true },
         price: { type: Number, required: true },
         quantity: { type: Number, required: true, min: 1 },
+        color: { type: mongoose.Schema.Types.Mixed, default: null },
+        customDesign: { type: mongoose.Schema.Types.Mixed, default: null },
       },
     ],
     totalAmount: { type: Number, required: true },

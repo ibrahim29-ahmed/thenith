@@ -1,4 +1,4 @@
-import { Briefcase, CalendarDays, Check, Clock, Lock } from "lucide-react";
+import { CalendarDays, Check, Clock, Lock, MessageSquare } from "lucide-react";
 import Field from "../../ui/Field.jsx";
 import MultiDatePicker from "../../ui/MultiDatePicker.jsx";
 
@@ -8,7 +8,7 @@ export default function ActionSection({ t, language, card, permissions, onUpdate
       id: "form",
       title: t("form"),
       text: t("formDescription"),
-      icon: Briefcase,
+      icon: MessageSquare,
     },
     {
       id: "calendar",

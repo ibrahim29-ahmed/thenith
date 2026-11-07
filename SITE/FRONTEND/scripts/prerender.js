@@ -16,7 +16,20 @@ const __dirname = path.dirname(__filename);
 
 const DIST_DIR = path.resolve(__dirname, "../dist");
 const BASE_HTML_PATH = path.join(DIST_DIR, "index.html");
-const PRODUCTION_DOMAIN = "https://thenith.com";
+function loadEnvSiteUrl() {
+  if (process.env.VITE_SITE_URL) return process.env.VITE_SITE_URL;
+  try {
+    const envPath = path.resolve(__dirname, "../.env");
+    if (fs.existsSync(envPath)) {
+      const content = fs.readFileSync(envPath, "utf-8");
+      const match = content.match(/^VITE_SITE_URL\s*=\s*(.+)$/m);
+      if (match) return match[1].trim().replace(/^['"]|['"]$/g, "");
+    }
+  } catch {}
+  return "https://thenith.com";
+}
+
+const PRODUCTION_DOMAIN = loadEnvSiteUrl().replace(/\/+$/, "");
 
 const ROUTES = [
   {

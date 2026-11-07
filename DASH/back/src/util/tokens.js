@@ -24,11 +24,11 @@ async function createRefreshToken(user, tokenId) {
 }
 
 function verifyAccessToken(token) {
-  return jwt.verify(token, env.JWT_ACCESS_SECRET);
+  return jwt.verify(token, env.JWT_ACCESS_SECRET, { algorithms: ["HS256"] });
 }
 
 function verifyRefreshToken(token) {
-  return jwt.verify(token, env.JWT_REFRESH_SECRET);
+  return jwt.verify(token, env.JWT_REFRESH_SECRET, { algorithms: ["HS256"] });
 }
 
 async function hashToken(token) {

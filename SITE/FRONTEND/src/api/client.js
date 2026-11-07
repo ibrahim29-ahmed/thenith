@@ -74,12 +74,18 @@ const normalizeRequestConfig = (config) => {
   return config;
 };
 
+import { getCachedDeviceIp } from "../utils/deviceNetwork.js";
+
 // Request interceptor — attach token & normalize URL
 apiClient.interceptors.request.use((config) => {
   normalizeRequestConfig(config);
   const token = readAuthToken();
   if (token && !config.headers.Authorization) {
     config.headers.Authorization = `Bearer ${token}`;
+  }
+  const deviceIp = getCachedDeviceIp();
+  if (deviceIp && !config.headers["X-Device-IP"]) {
+    config.headers["X-Device-IP"] = deviceIp;
   }
   // FormData should not override Content-Type (let browser set boundary)
   if (config.data instanceof FormData) {
@@ -123,7 +129,14 @@ export const publicClient = axios.create({
   withCredentials: true,
 });
 
-publicClient.interceptors.request.use(normalizeRequestConfig);
+publicClient.interceptors.request.use((config) => {
+  normalizeRequestConfig(config);
+  const deviceIp = getCachedDeviceIp();
+  if (deviceIp && !config.headers["X-Device-IP"]) {
+    config.headers["X-Device-IP"] = deviceIp;
+  }
+  return config;
+});
 
 publicClient.interceptors.response.use(
   (response) => response,

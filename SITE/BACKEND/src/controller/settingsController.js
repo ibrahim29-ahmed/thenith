@@ -6,16 +6,20 @@ const { mergeLandingConfig  } = _landingConfig4943;
 
 // ── GET /api/settings ─────────────────────────────────────────────────────────
 const getSettings = asyncHandler(async (req, res) => {
-  const settings = await Setting.find({
-    key: { $in: ["store_config", "public_config", "landing_config"] },
-  });
+  const settings = await Setting.find({}).lean();
   const settingsMap = {};
+
+  // Blacklist sensitive keys from being exposed publicly
+  const sensitiveRegex = /secret|password|private_key|auth_token|token_secret|^smtp_config$|^email_templates$/i;
+
   settings.forEach((s) => {
-    settingsMap[s.key] = s.value;
+    if (s.key && !sensitiveRegex.test(s.key)) {
+      settingsMap[s.key] = s.value;
+    }
   });
-  settingsMap.landing_config = mergeLandingConfig(settingsMap.landing_config);
+
+  settingsMap.landing_config = mergeLandingConfig(settingsMap.landing_config || {});
   res.json(settingsMap);
 });
-
 
 export default { getSettings };

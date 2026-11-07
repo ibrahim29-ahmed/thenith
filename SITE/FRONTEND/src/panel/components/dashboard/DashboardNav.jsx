@@ -1,5 +1,15 @@
 import { useState, useEffect } from "react";
-import { Menu, X, Languages, LogOut, Moon, Sun } from "lucide-react";
+import { Link } from "react-router-dom";
+import {
+  Menu,
+  X,
+  Languages,
+  LogOut,
+  Moon,
+  Sun,
+  ShieldCheck,
+  ChevronDown,
+} from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 
 export default function DashboardNav({
@@ -14,6 +24,10 @@ export default function DashboardNav({
   onLogout,
   isMobileMenuOpen: propIsMobileMenuOpen,
   setIsMobileMenuOpen: propSetIsMobileMenuOpen,
+  policies = [],
+  selectedPolicySlug = "",
+  onSelectPolicy,
+
 }) {
   const isRtl = language === "ar";
   const [internalMobileMenuOpen, setInternalMobileMenuOpen] = useState(false);
@@ -24,6 +38,20 @@ export default function DashboardNav({
   const setIsMobileMenuOpen =
     propSetIsMobileMenuOpen || setInternalMobileMenuOpen;
 
+  // Accordion state for policies sub-menu
+  const [policiesOpen, setPoliciesOpen] = useState(activeTab === "policies");
+
+  // Keep open when activeTab is "policies", and automatically close when switching to any other tab
+  useEffect(() => {
+    if (activeTab === "policies") {
+      setPoliciesOpen(true);
+    } else {
+      setPoliciesOpen(false);
+    }
+  }, [activeTab]);
+
+
+
   // Split items: home, cards, messages go in the main bottom bar
   const mainItemIds = ["home", "cards", "messages"];
   const mainItems = navItems.filter((item) => mainItemIds.includes(item.id));
@@ -33,7 +61,21 @@ export default function DashboardNav({
   const isMoreActive = moreItems.some((item) => item.id === activeTab);
 
   const handleTabChange = (id) => {
+    setPoliciesOpen(false);
     onChangeTab(id);
+    setIsMobileMenuOpen(false);
+  };
+
+  const handleTogglePolicies = () => {
+    setPoliciesOpen((prev) => !prev);
+    if (activeTab !== "policies") {
+      onChangeTab("policies");
+    }
+  };
+
+  const handlePolicyItemClick = (slug) => {
+    if (onSelectPolicy) onSelectPolicy(slug);
+    onChangeTab("policies");
     setIsMobileMenuOpen(false);
   };
 
@@ -48,6 +90,8 @@ export default function DashboardNav({
       document.body.style.overflow = "unset";
     };
   }, [isMobileMenuOpen]);
+
+
 
   return (
     <>
@@ -64,8 +108,11 @@ export default function DashboardNav({
               return (
                 <button
                   key={item.id}
-                  onClick={() => onChangeTab(item.id)}
-                  className={`flex w-full items-center justify-between rounded-xl px-4 py-3 text-sm font-bold transition-colors ${
+                  onClick={() => {
+                    setPoliciesOpen(false);
+                    onChangeTab(item.id);
+                  }}
+                  className={`flex w-full items-center justify-between rounded-xl px-4 py-3 text-sm font-bold transition-colors cursor-pointer ${
                     active
                       ? "bg-slate-950 text-white dark:bg-slate-100 dark:text-slate-950"
                       : "text-slate-600 hover:bg-slate-50 dark:text-slate-400 dark:hover:bg-slate-900"
@@ -83,6 +130,73 @@ export default function DashboardNav({
                 </button>
               );
             })}
+          </div>
+
+          {/* Usage Policy Accordion in Desktop Sidebar */}
+          <div className="mt-3 pt-3 border-t border-slate-100 dark:border-slate-900 px-1">
+            <button
+              type="button"
+              onClick={handleTogglePolicies}
+              className={`flex w-full items-center justify-between rounded-xl px-3 py-2.5 text-xs font-bold transition-all cursor-pointer ${
+                activeTab === "policies"
+                  ? "bg-slate-950 text-white dark:bg-slate-100 dark:text-slate-950"
+                  : "text-slate-500 hover:bg-slate-50 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-900 dark:hover:text-slate-200"
+              }`}
+            >
+              <span className="flex items-center gap-2.5">
+                <ShieldCheck className="h-4 w-4 text-indigo-500" />
+                <span>{isRtl ? "سياسة الاستخدام" : "Terms of Use"}</span>
+              </span>
+              <ChevronDown
+                className={`h-3.5 w-3.5 transition-transform duration-200 ${
+                  policiesOpen ? "rotate-180" : ""
+                }`}
+              />
+            </button>
+
+            {/* Sub-menu of policies */}
+            <AnimatePresence>
+              {policiesOpen && policies && policies.length > 0 && (
+                <motion.div
+                  initial={{ height: 0, opacity: 0 }}
+                  animate={{ height: "auto", opacity: 1 }}
+                  exit={{ height: 0, opacity: 0 }}
+                  transition={{ duration: 0.2 }}
+                  className="overflow-hidden mt-1 space-y-1 pe-1 ps-4 py-1"
+                >
+                  {policies.map((p) => {
+                    const title =
+                      typeof p.title === "object"
+                        ? p.title?.[language] || p.title?.ar || p.title?.en || ""
+                        : p.title;
+                    const isSelected =
+                      activeTab === "policies" && selectedPolicySlug === p.slug;
+
+                    return (
+                      <button
+                        key={p._id || p.slug}
+                        type="button"
+                        onClick={() => handlePolicyItemClick(p.slug)}
+                        className={`flex w-full items-center justify-between rounded-lg px-2.5 py-1.5 text-[11px] font-bold transition-all cursor-pointer ${
+                          isSelected
+                            ? "bg-indigo-50 text-indigo-600 dark:bg-indigo-950/70 dark:text-indigo-400 font-black"
+                            : "text-slate-500 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-900 dark:hover:text-slate-200"
+                        }`}
+                      >
+                        <span className="truncate">{title}</span>
+                        <span
+                          className={`h-1.5 w-1.5 rounded-full shrink-0 ${
+                            isSelected
+                              ? "bg-indigo-600 dark:bg-indigo-400"
+                              : "bg-slate-300 dark:bg-slate-700"
+                          }`}
+                        />
+                      </button>
+                    );
+                  })}
+                </motion.div>
+              )}
+            </AnimatePresence>
           </div>
         </nav>
       </aside>
@@ -130,7 +244,7 @@ export default function DashboardNav({
           {/* Settings / More button */}
           {(() => {
             const moreBadgeCount = moreItems.reduce((acc, item) => {
-              if (typeof item.badge === 'number') return acc + item.badge;
+              if (typeof item.badge === "number") return acc + item.badge;
               if (item.badge) return acc + 1;
               return acc;
             }, 0);
@@ -251,7 +365,7 @@ export default function DashboardNav({
                       }`}
                     >
                       <Sun className="h-4 w-4" />
-                      <span>{isRtl ? "نهاري" : "Light"}</span>
+                      <span>{isRtl ? "فاتح" : "Light"}</span>
                     </button>
                     <button
                       type="button"
@@ -265,7 +379,7 @@ export default function DashboardNav({
                       }`}
                     >
                       <Moon className="h-4 w-4" />
-                      <span>{isRtl ? "ليلي" : "Dark"}</span>
+                      <span>{isRtl ? "داكن" : "Dark"}</span>
                     </button>
                   </div>
 
@@ -296,6 +410,74 @@ export default function DashboardNav({
                     <LogOut className="h-4 w-4" />
                     <span>{t("logout") || (isRtl ? "تسجيل الخروج" : "Logout")}</span>
                   </button>
+
+                  {/* Usage Policy Accordion in Mobile Drawer */}
+                  <div className="pt-2 border-t border-slate-100 dark:border-slate-800/80">
+                    <button
+                      type="button"
+                      onClick={handleTogglePolicies}
+                      className={`flex w-full items-center justify-between rounded-xl px-3 py-2 text-xs font-bold transition-colors cursor-pointer ${
+                        activeTab === "policies"
+                          ? "bg-slate-950 text-white dark:bg-slate-100 dark:text-slate-950"
+                          : "text-slate-600 hover:bg-slate-50 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-900 dark:hover:text-white"
+                      }`}
+                    >
+                      <span className="flex items-center gap-2.5">
+                        <ShieldCheck className="h-4 w-4 text-indigo-500" />
+                        <span>{isRtl ? "سياسة الاستخدام" : "Terms of Use"}</span>
+                      </span>
+                      <ChevronDown
+                        className={`h-3.5 w-3.5 transition-transform duration-200 ${
+                          policiesOpen ? "rotate-180" : ""
+                        }`}
+                      />
+                    </button>
+
+                    {/* Sub-menu of policies inside drawer */}
+                    <AnimatePresence>
+                      {policiesOpen && policies && policies.length > 0 && (
+                        <motion.div
+                          initial={{ height: 0, opacity: 0 }}
+                          animate={{ height: "auto", opacity: 1 }}
+                          exit={{ height: 0, opacity: 0 }}
+                          transition={{ duration: 0.2 }}
+                          className="overflow-hidden mt-1 space-y-1 pe-1 ps-4 py-1"
+                        >
+                          {policies.map((p) => {
+                            const title =
+                              typeof p.title === "object"
+                                ? p.title?.[language] || p.title?.ar || p.title?.en || ""
+                                : p.title;
+                            const isSelected =
+                              activeTab === "policies" &&
+                              selectedPolicySlug === p.slug;
+
+                            return (
+                              <button
+                                key={p._id || p.slug}
+                                type="button"
+                                onClick={() => handlePolicyItemClick(p.slug)}
+                                className={`flex w-full items-center justify-between rounded-lg px-2.5 py-2 text-xs font-bold transition-all cursor-pointer ${
+                                  isSelected
+                                    ? "bg-indigo-50 text-indigo-600 dark:bg-indigo-950/70 dark:text-indigo-400 font-black"
+                                    : "text-slate-600 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-900 dark:hover:text-white"
+                                }`}
+                              >
+                                <span className="truncate">{title}</span>
+                                <span
+                                  className={`h-1.5 w-1.5 rounded-full shrink-0 ${
+                                    isSelected
+                                      ? "bg-indigo-600 dark:bg-indigo-400"
+                                      : "bg-slate-300 dark:bg-slate-700"
+                                  }`}
+                                />
+                              </button>
+                            );
+                          })}
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  </div>
                 </div>
               </div>
             </motion.div>

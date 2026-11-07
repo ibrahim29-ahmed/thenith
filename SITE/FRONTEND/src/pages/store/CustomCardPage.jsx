@@ -40,7 +40,7 @@ import { useGlobalLanguage } from "../../context/GlobalLanguageContext.jsx";
 import { useCart } from "../../context/CartContext.jsx";
 import { useAuth } from "../../context/AuthContext.jsx";
 import { formatMoney, loadStoreProducts } from "./storeApi.js";
-import api from "../../api/index.js";
+import api, { apiClient, publicClient } from "../../api/index.js";
 import toast from "react-hot-toast";
 import { QRCodeCanvas, QRCodeSVG } from "qrcode.react";
 import { saveCardDraftImages, createThumbnailFromDataUrl } from "../../utils/customCardStorage.js";
@@ -450,6 +450,48 @@ const POPULAR_ICONS = [
     svg: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 8a6 6 0 0 1 6 6v7h-4v-7a2 2 0 0 0-2-2 2 2 0 0 0-2 2v7h-4v-7a6 6 0 0 1 6-6z"/><rect width="4" height="12" x="2" y="9"/><circle cx="4" cy="4" r="2"/></svg>`,
   },
   {
+    id: "facebook",
+    nameAr: "فيسبوك",
+    nameEn: "Facebook",
+    svg: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 2h-3a5 5 0 0 0-5 5v3H7v4h3v8h4v-8h3l1-4h-4V7a1 1 0 0 1 1-1h3z"/></svg>`,
+  },
+  {
+    id: "twitter_x",
+    nameAr: "منصة X",
+    nameEn: "X",
+    svg: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4l11.733 16h4.267l-11.733 -16z"/><path d="M4 20l6.768 -6.768m2.46 -2.46l6.772 -6.772"/></svg>`,
+  },
+  {
+    id: "telegram",
+    nameAr: "تيليجرام",
+    nameEn: "Telegram",
+    svg: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 10l-4 4l6 6l4 -16l-18 7l4 2l2 6l3 -4"/></svg>`,
+  },
+  {
+    id: "tiktok",
+    nameAr: "تيك توك",
+    nameEn: "TikTok",
+    svg: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 12a4 4 0 1 0 4 4V4a5 5 0 0 0 5 5"/></svg>`,
+  },
+  {
+    id: "youtube",
+    nameAr: "يوتيوب",
+    nameEn: "YouTube",
+    svg: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 17a24.12 24.12 0 0 1 0-10 2 2 0 0 1 1.4-1.4 49.56 49.56 0 0 1 16.2 0A2 2 0 0 1 21.5 7a24.12 24.12 0 0 1 0 10 2 2 0 0 1-1.4 1.4 49.55 49.55 0 0 1-16.2 0A2 2 0 0 1 2.5 17"/><polygon points="10 15 15 12 10 9 10 15"/></svg>`,
+  },
+  {
+    id: "snapchat",
+    nameAr: "سناب شات",
+    nameEn: "Snapchat",
+    svg: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16.9 17.7a3.5 3.5 0 0 0 1.9-.5c.8-.4 1.2-1.2 1.2-1.7 0-.5-.5-.9-1.2-1.1-.3-.1-.5-.3-.5-.5 0-.5.6-1 1-1.6.4-.6.7-1.3.7-2.3 0-2.8-2.3-5-5-5s-5 2.2-5 5c0 1 .3 1.7.7 2.3.4.6 1 1.1 1 1.6 0 .2-.2.4-.5.5-.7.2-1.2.6-1.2 1.1 0 .5.4 1.3 1.2 1.7a3.5 3.5 0 0 0 1.9.5c.3 0 .7-.1 1.1-.3a4.2 4.2 0 0 1 3.6 0c.4.2.8.3 1.1.3h.2z"/></svg>`,
+  },
+  {
+    id: "github",
+    nameAr: "جيت هب",
+    nameEn: "GitHub",
+    svg: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 22v-4a4.8 4.8 0 0 0-1-3.5c3 0 6-2 6-5.5.08-1.25-.27-2.48-1-3.5.28-1.15.28-2.35 0-3.5 0 0-1 0-3 1.5-2.64-.5-5.36-.5-8 0C6 2 5 2 5 2c-.3 1.15-.3 2.35 0 3.5A5.403 5.403 0 0 0 4 9c0 3.5 3 5.5 6 5.5-.39.49-.68 1.05-.85 1.65-.17.6-.22 1.23-.15 1.85v4"/><path d="M9 18c-4.51 2-5-2-7-2"/></svg>`,
+  },
+  {
     id: "location",
     nameAr: "موقع / خريطة",
     nameEn: "Location",
@@ -473,10 +515,103 @@ const POPULAR_ICONS = [
     nameEn: "Star",
     svg: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>`,
   },
+  {
+    id: "crown",
+    nameAr: "تاج / VIP",
+    nameEn: "Crown",
+    svg: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 4l3 12h14l3-12-6 7-4-7-4 7-6-7zm3 16h14v2H5v-2z"/></svg>`,
+  },
+  {
+    id: "briefcase",
+    nameAr: "عمل / محفظة",
+    nameEn: "Work",
+    svg: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="14" x="2" y="7" rx="2" ry="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg>`,
+  },
+  {
+    id: "user",
+    nameAr: "بروفايل / شخصي",
+    nameEn: "Profile",
+    svg: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>`,
+  },
+  {
+    id: "building",
+    nameAr: "شركة / مكتب",
+    nameEn: "Company",
+    svg: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="16" height="20" x="4" y="2" rx="2" ry="2"/><path d="M9 22v-4h6v4"/><path d="M8 6h.01"/><path d="M16 6h.01"/><path d="M8 10h.01"/><path d="M16 10h.01"/><path d="M8 14h.01"/><path d="M16 14h.01"/></svg>`,
+  },
+  {
+    id: "calendar",
+    nameAr: "مواعيد / تقويم",
+    nameEn: "Calendar",
+    svg: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="4" rx="2" ry="2"/><line x1="16" x2="16" y1="2" y2="6"/><line x1="8" x2="8" y1="2" y2="6"/><line x1="3" x2="21" y1="10" y2="10"/></svg>`,
+  },
+  {
+    id: "creditCard",
+    nameAr: "دفع / بنك",
+    nameEn: "Payment",
+    svg: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="14" x="2" y="5" rx="2"/><line x1="2" x2="22" y1="10" y2="10"/></svg>`,
+  },
+  {
+    id: "shoppingBag",
+    nameAr: "متجر / تسوق",
+    nameEn: "Shop",
+    svg: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z"/><path d="M3 6h18"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>`,
+  },
+  {
+    id: "messageCircle",
+    nameAr: "محادثة / رسائل",
+    nameEn: "Chat",
+    svg: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"/></svg>`,
+  },
+  {
+    id: "shield",
+    nameAr: "حماية / أمان",
+    nameEn: "Shield",
+    svg: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>`,
+  },
+  {
+    id: "heart",
+    nameAr: "إعجاب / قلب",
+    nameEn: "Heart",
+    svg: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/></svg>`,
+  },
+  {
+    id: "sparkles",
+    nameAr: "تميز / لمعان",
+    nameEn: "Sparkles",
+    svg: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"/></svg>`,
+  },
+  {
+    id: "camera",
+    nameAr: "تصوير / كاميرا",
+    nameEn: "Camera",
+    svg: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/></svg>`,
+  },
+  {
+    id: "music",
+    nameAr: "صوت / موسيقى",
+    nameEn: "Music",
+    svg: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>`,
+  },
+  {
+    id: "link",
+    nameAr: "رابط / لينك",
+    nameEn: "Link",
+    svg: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>`,
+  },
+  {
+    id: "award",
+    nameAr: "وسام / إنجاز",
+    nameEn: "Award",
+    svg: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="6"/><path d="M15.477 12.89 17 22l-5-3-5 3 1.523-9.11"/></svg>`,
+  },
 ];
 
 function svgToDataUrl(svgStr, color = "#ffffff") {
-  const colored = svgStr.replace(/currentColor/g, color);
+  let colored = svgStr.replace(/currentColor/g, color);
+  if (!colored.includes("width=")) {
+    colored = colored.replace("<svg ", '<svg width="256" height="256" ');
+  }
   return `data:image/svg+xml;utf8,${encodeURIComponent(colored)}`;
 }
 
@@ -530,6 +665,66 @@ function MiniColorSwatchPicker({ value, onChange, isArabic }) {
           className="opacity-0 absolute inset-0 w-full h-full cursor-pointer"
         />
       </label>
+    </div>
+  );
+}
+
+function getFontFamily(fontId) {
+  const f = FONT_OPTIONS.find((item) => item.id === fontId);
+  return f ? f.cssFamily : "'Cairo', sans-serif";
+}
+
+// ── Per-Text Font Picker Component ──────────────────────────────────────────
+function FontPickerSelect({ value, onChange, isArabic }) {
+  const currentFont = FONT_OPTIONS.find((f) => f.id === value) || FONT_OPTIONS[0];
+  return (
+    <div className="relative">
+      <select
+        value={value || "Cairo"}
+        onChange={(e) => onChange(e.target.value)}
+        className="w-full rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-2.5 text-xs font-bold text-slate-900 dark:text-white outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 appearance-none cursor-pointer transition-all pe-8"
+        style={{ fontFamily: currentFont?.cssFamily }}
+      >
+        <optgroup label={isArabic ? "── خطوط عربية عصرية ──" : "── Modern Arabic ──"}>
+          {FONT_OPTIONS.filter((f) => f.group === "arabic_modern").map((font) => (
+            <option
+              key={font.id}
+              value={font.id}
+              className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white py-1.5"
+              style={{ fontFamily: font.cssFamily }}
+            >
+              {isArabic ? font.nameAr : font.nameEn}
+            </option>
+          ))}
+        </optgroup>
+        <optgroup label={isArabic ? "── خطوط فخمة وأصيلة ──" : "── Luxury & Calligraphic ──"}>
+          {FONT_OPTIONS.filter((f) => f.group === "luxury").map((font) => (
+            <option
+              key={font.id}
+              value={font.id}
+              className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white py-1.5"
+              style={{ fontFamily: font.cssFamily }}
+            >
+              {isArabic ? font.nameAr : font.nameEn}
+            </option>
+          ))}
+        </optgroup>
+        <optgroup label={isArabic ? "── خطوط إنجليزية وعالمية ──" : "── Global & English ──"}>
+          {FONT_OPTIONS.filter((f) => f.group === "english").map((font) => (
+            <option
+              key={font.id}
+              value={font.id}
+              className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white py-1.5"
+              style={{ fontFamily: font.cssFamily }}
+            >
+              {isArabic ? font.nameAr : font.nameEn}
+            </option>
+          ))}
+        </optgroup>
+      </select>
+      <div className="pointer-events-none absolute inset-y-0 end-0 flex items-center px-2.5 text-slate-400">
+        <ChevronDown className="w-3.5 h-3.5" />
+      </div>
     </div>
   );
 }
@@ -660,10 +855,12 @@ export default function CustomCardPage({
   const [isFlipped, setIsFlipped] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
 
-  // Card Content: Default name THENITH, Default job empty
-  const [cardName, setCardName] = useState(() => (initialDraft?.cardName !== undefined ? initialDraft.cardName : "THENITH"));
+  // Card Content: Default name NAME, Default job empty
+  const [cardName, setCardName] = useState(() => (initialDraft?.cardName !== undefined ? initialDraft.cardName : "NAME"));
   const [cardJob, setCardJob] = useState(() => (initialDraft?.cardJob !== undefined ? initialDraft.cardJob : ""));
   const [selectedFont, setSelectedFont] = useState(() => initialDraft?.selectedFont || "Cairo");
+  const [nameFont, setNameFont] = useState(() => initialDraft?.nameFont || initialDraft?.selectedFont || "Cairo");
+  const [jobFont, setJobFont] = useState(() => initialDraft?.jobFont || initialDraft?.selectedFont || "Cairo");
   const [textColor, setTextColor] = useState(() => initialDraft?.textColor || "#ffffff");
   const [nameSize, setNameSize] = useState(() => initialDraft?.nameSize ?? 24); // px in preview
   const [nameColor, setNameColor] = useState(() => initialDraft?.nameColor || "#ffffff");
@@ -675,16 +872,28 @@ export default function CustomCardPage({
 
   // Background
   const [selectedBg, setSelectedBg] = useState(() => initialDraft?.selectedBg || "thenith_signature");
-  const [bgSubTab, setBgSubTab] = useState("presets"); // 'presets' | 'pure_color'
+  const [bgSubTab, setBgSubTab] = useState("presets"); // 'presets' | 'pure_color' | 'custom_card'
   const [customSolidBgColor, setCustomSolidBgColor] = useState(() => initialDraft?.customSolidBgColor || "#0f172a");
   const [customBgImage, setCustomBgImage] = useState(null);
   const [customBgDataUrl, setCustomBgDataUrl] = useState(() => initialDraft?.customBgDataUrl || null);
+  const [customBackBgDataUrl, setCustomBackBgDataUrl] = useState(() => initialDraft?.customBackBgDataUrl || null);
 
-  // Image Upload (صورة / شعار)
+  // Image Upload (صورة / شعار) – Front Face (slot 1 & 2)
   const [logoDataUrl, setLogoDataUrl] = useState(() => initialDraft?.logoDataUrl || null);
   const [logoPosition, setLogoPosition] = useState(() => initialDraft?.logoPosition || "top-right");
   const [logoSize, setLogoSize] = useState(() => initialDraft?.logoSize ?? 55); // px
   const [logoFilter, setLogoFilter] = useState(() => initialDraft?.logoFilter || "none");
+  // Front Face – second image slot
+  const [logo2DataUrl, setLogo2DataUrl] = useState(() => initialDraft?.logo2DataUrl || null);
+  const [logo2Size, setLogo2Size] = useState(() => initialDraft?.logo2Size ?? 55);
+  const [logo2Filter, setLogo2Filter] = useState(() => initialDraft?.logo2Filter || "none");
+  // Back Face image slots (1 & 2)
+  const [backLogoDataUrl, setBackLogoDataUrl] = useState(() => initialDraft?.backLogoDataUrl || null);
+  const [backLogoSize, setBackLogoSize] = useState(() => initialDraft?.backLogoSize ?? 55);
+  const [backLogoFilter, setBackLogoFilter] = useState(() => initialDraft?.backLogoFilter || "none");
+  const [backLogo2DataUrl, setBackLogo2DataUrl] = useState(() => initialDraft?.backLogo2DataUrl || null);
+  const [backLogo2Size, setBackLogo2Size] = useState(() => initialDraft?.backLogo2Size ?? 55);
+  const [backLogo2Filter, setBackLogo2Filter] = useState(() => initialDraft?.backLogo2Filter || "none");
 
   // Product Data
   const [product, setProduct] = useState(preselectedProduct || null);
@@ -701,11 +910,14 @@ export default function CustomCardPage({
       name: { x: 50, y: 50 },
       job: { x: 50, y: 64 },
       logo: { x: 84, y: 18 },
+      logo2: { x: 16, y: 18 },
       brand: { x: 16, y: 18 },
       tap: { x: 22, y: 88 },
       backTitle: { x: 28, y: 20 },
       backQr: { x: 75, y: 50 },
       backSubtitle: { x: 28, y: 82 },
+      backLogo: { x: 20, y: 65 },
+      backLogo2: { x: 50, y: 65 },
     }),
     [],
   );
@@ -715,8 +927,11 @@ export default function CustomCardPage({
     name: true,
     job: true,
     logo: true,
+    logo2: true,
     brand: false, // Default is hidden as requested
     tap: false,
+    backLogo: true,
+    backLogo2: true,
   });
   const [selectedElementId, setSelectedElementId] = useState(null);
 
@@ -724,11 +939,14 @@ export default function CustomCardPage({
   const [activeCardFace, setActiveCardFace] = useState("front"); // 'front' | 'back'
   const [backTitle, setBackTitle] = useState(() => (initialDraft?.backTitle !== undefined ? initialDraft.backTitle : "Digital Identity Card"));
   const [backTitleColor, setBackTitleColor] = useState(() => initialDraft?.backTitleColor || "");
+  const [backTitleFont, setBackTitleFont] = useState(() => initialDraft?.backTitleFont || "Cairo");
+  const [syncBackQrColor, setSyncBackQrColor] = useState(true);
   const [backTitleSize, setBackTitleSize] = useState(() => initialDraft?.backTitleSize ?? 13); // px in preview
   const [showBackTitle, setShowBackTitle] = useState(() => (initialDraft?.showBackTitle !== undefined ? initialDraft.showBackTitle : true));
 
   const [backSubtitle, setBackSubtitle] = useState(() => (initialDraft?.backSubtitle !== undefined ? initialDraft.backSubtitle : "thenith.com"));
   const [backSubtitleColor, setBackSubtitleColor] = useState(() => initialDraft?.backSubtitleColor || "");
+  const [backSubtitleFont, setBackSubtitleFont] = useState(() => initialDraft?.backSubtitleFont || "Cairo");
   const [backSubtitleSize, setBackSubtitleSize] = useState(() => initialDraft?.backSubtitleSize ?? 13); // px in preview
   const [showBackSubtitle, setShowBackSubtitle] = useState(() => (initialDraft?.showBackSubtitle !== undefined ? initialDraft.showBackSubtitle : true));
 
@@ -742,20 +960,130 @@ export default function CustomCardPage({
   const [backQrSize, setBackQrSize] = useState(() => initialDraft?.backQrSize ?? 88); // px
   const [showBackQr, setShowBackQr] = useState(() => (initialDraft?.showBackQr !== undefined ? initialDraft.showBackQr : true));
   const [qrColor, setQrColor] = useState(() => initialDraft?.qrColor || "#000000"); // لون الـ QR
+  const lastManualQrColorRef = useRef(initialDraft?.qrColor || "#000000");
+  const handleSetManualQrColor = (c) => {
+    lastManualQrColorRef.current = c;
+    setQrColor(c);
+  };
   const [backQrContainerBg, setBackQrContainerBg] = useState("white"); // 'white' | 'transparent' | 'dark'
 
   const [backCustomTexts, setBackCustomTexts] = useState(() => initialDraft?.backCustomTexts || []);
   const [customIcons, setCustomIcons] = useState(() => initialDraft?.customIcons || []);
   const colorToastTimerRef = useRef(null);
+  const currentAdminVersionRef = useRef(initialDraft?._adminVersion || null);
+  const adminConfigRef = useRef(null);
+
+  // ── Helper to Apply Template Config to State ────────────────────────────────
+  const applyTemplateConfig = (config) => {
+    if (!config) return;
+    if (config.adminVersion) currentAdminVersionRef.current = config.adminVersion;
+    if (config.cardName !== undefined) setCardName(config.cardName || "NAME");
+    if (config.cardJob !== undefined) setCardJob(config.cardJob || "");
+    if (config.selectedBg) {
+      setSelectedBg(config.selectedBg);
+      if (config.selectedBg === "custom") {
+        setBgSubTab("custom_card");
+      } else if (config.selectedBg === "custom_solid_color") {
+        setBgSubTab("pure_color");
+      } else {
+        setBgSubTab("presets");
+      }
+    }
+    if (config.customSolidBgColor) setCustomSolidBgColor(config.customSolidBgColor);
+    setCustomBgDataUrl(config.customBgDataUrl || null);
+    setCustomBackBgDataUrl(config.customBackBgDataUrl || null);
+    if (config.nameFont) setNameFont(config.nameFont);
+    if (config.nameSize) setNameSize(config.nameSize);
+    if (config.nameColor) setNameColor(config.nameColor);
+    if (config.jobFont) setJobFont(config.jobFont);
+    if (config.jobSize) setJobSize(config.jobSize);
+    if (config.jobColor) setJobColor(config.jobColor);
+    if (config.textAlign) setTextAlign(config.textAlign);
+    if (config.customTexts) setCustomTexts(config.customTexts);
+
+    setLogoDataUrl(config.logoDataUrl || null);
+    if (config.logoSize) setLogoSize(config.logoSize);
+    if (config.logoFilter) setLogoFilter(config.logoFilter);
+    setLogo2DataUrl(config.logo2DataUrl || null);
+    if (config.logo2Size) setLogo2Size(config.logo2Size);
+    if (config.logo2Filter) setLogo2Filter(config.logo2Filter);
+
+    setBackLogoDataUrl(config.backLogoDataUrl || null);
+    if (config.backLogoSize) setBackLogoSize(config.backLogoSize);
+    if (config.backLogoFilter) setBackLogoFilter(config.backLogoFilter);
+    setBackLogo2DataUrl(config.backLogo2DataUrl || null);
+    if (config.backLogo2Size) setBackLogo2Size(config.backLogo2Size);
+    if (config.backLogo2Filter) setBackLogo2Filter(config.backLogo2Filter);
+
+    if (config.backTitle !== undefined) setBackTitle(config.backTitle);
+    if (config.backTitleFont) setBackTitleFont(config.backTitleFont);
+    if (config.backTitleSize) setBackTitleSize(config.backTitleSize);
+    if (config.backTitleColor !== undefined) setBackTitleColor(config.backTitleColor);
+    if (config.backSubtitle !== undefined) setBackSubtitle(config.backSubtitle);
+    if (config.backSubtitleFont) setBackSubtitleFont(config.backSubtitleFont);
+    if (config.backSubtitleSize) setBackSubtitleSize(config.backSubtitleSize);
+    if (config.backSubtitleColor !== undefined) setBackSubtitleColor(config.backSubtitleColor);
+
+    if (config.backQrSize) setBackQrSize(config.backQrSize);
+    if (config.qrColor) setQrColor(config.qrColor);
+    if (config.backQrContainerBg) setBackQrContainerBg(config.backQrContainerBg);
+
+    if (config.elementsPos) {
+      setElementsPos((prev) => ({ ...prev, ...config.elementsPos }));
+    }
+    if (config.elementsVisibility) {
+      setElementsVisibility((prev) => ({ ...prev, ...config.elementsVisibility }));
+    }
+  };
+
+  // ── Sync with Admin Configured Default Template from Backend (/api/settings) ──
+  useEffect(() => {
+    let mounted = true;
+    const client = publicClient || apiClient || api?.client;
+    if (!client || typeof client.get !== "function") return;
+
+    client
+      .get("/settings")
+      .then((res) => {
+        if (!mounted) return;
+        const config = res?.data?.custom_card_config;
+        if (!config) return;
+
+        adminConfigRef.current = config;
+
+        const rawLocal = localStorage.getItem(STUDIO_STORAGE_KEY);
+        let localDraft = null;
+        try {
+          if (rawLocal) localDraft = JSON.parse(rawLocal);
+        } catch { }
+
+        const isNewAdminVersion = Boolean(config.adminVersion && config.adminVersion !== localDraft?._adminVersion);
+        const hasNeverSaved = !localDraft;
+
+        if (hasNeverSaved || isNewAdminVersion) {
+          applyTemplateConfig(config);
+        }
+      })
+      .catch((err) => {
+        console.warn("Could not sync custom card settings from backend:", err);
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   // ── Auto-save Studio Draft to localStorage ────────────────────────────────────
   useEffect(() => {
     const timer = setTimeout(() => {
       try {
         const payload = {
+          _adminVersion: currentAdminVersionRef.current,
           cardName,
           cardJob,
           selectedFont,
+          nameFont,
+          jobFont,
           textColor,
           nameSize,
           nameColor,
@@ -766,18 +1094,30 @@ export default function CustomCardPage({
           selectedBg,
           customSolidBgColor,
           customBgDataUrl,
+          customBackBgDataUrl,
           logoDataUrl,
           logoPosition,
           logoSize,
           logoFilter,
+          logo2DataUrl,
+          logo2Size,
+          logo2Filter,
+          backLogoDataUrl,
+          backLogoSize,
+          backLogoFilter,
+          backLogo2DataUrl,
+          backLogo2Size,
+          backLogo2Filter,
           elementsPos,
           elementsVisibility,
           backTitle,
           backTitleColor,
+          backTitleFont,
           backTitleSize,
           showBackTitle,
           backSubtitle,
           backSubtitleColor,
+          backSubtitleFont,
           backSubtitleSize,
           showBackSubtitle,
           backQrValue,
@@ -798,6 +1138,8 @@ export default function CustomCardPage({
     cardName,
     cardJob,
     selectedFont,
+    nameFont,
+    jobFont,
     textColor,
     nameSize,
     nameColor,
@@ -808,18 +1150,30 @@ export default function CustomCardPage({
     selectedBg,
     customSolidBgColor,
     customBgDataUrl,
+    customBackBgDataUrl,
     logoDataUrl,
     logoPosition,
     logoSize,
     logoFilter,
+    logo2DataUrl,
+    logo2Size,
+    logo2Filter,
+    backLogoDataUrl,
+    backLogoSize,
+    backLogoFilter,
+    backLogo2DataUrl,
+    backLogo2Size,
+    backLogo2Filter,
     elementsPos,
     elementsVisibility,
     backTitle,
     backTitleColor,
+    backTitleFont,
     backTitleSize,
     showBackTitle,
     backSubtitle,
     backSubtitleColor,
+    backSubtitleFont,
     backSubtitleSize,
     showBackSubtitle,
     backQrValue,
@@ -901,6 +1255,7 @@ export default function CustomCardPage({
       text: isArabic ? `نص إضافي ${newIndex}` : `Custom Text ${newIndex}`,
       size: Math.max(12, Math.round(nameSize * 0.45)),
       color: textColor,
+      font: nameFont || "Cairo",
       x: 50,
       y: defaultY,
     };
@@ -933,6 +1288,27 @@ export default function CustomCardPage({
     }
   };
 
+  // Master Back Face Text Color Unifier (توحيد ألوان نصوص ظهر الكارت مع خيار تضمين الـ QR)
+  const handleApplyBackTextColor = (newColor, notify = true) => {
+    setBackTitleColor(newColor);
+    setBackSubtitleColor(newColor);
+    setBackCustomTexts((prev) => prev.map((t) => ({ ...t, color: newColor })));
+    if (syncBackQrColor) {
+      setQrColor(newColor);
+    }
+
+    if (notify) {
+      if (colorToastTimerRef.current) clearTimeout(colorToastTimerRef.current);
+      colorToastTimerRef.current = setTimeout(() => {
+        toast.success(
+          isArabic
+            ? "تم توحيد لون جميع نصوص ظهر الكارت بنجاح"
+            : "Unified all back text colors"
+        );
+      }, 700);
+    }
+  };
+
   const handleAddBackCustomText = () => {
     const newId = `back_text_${Date.now()}`;
     const newItem = {
@@ -940,6 +1316,7 @@ export default function CustomCardPage({
       text: isArabic ? "نص إضافي على الظهر" : "Back Custom Text",
       color: textColor,
       size: 13,
+      font: backTitleFont || "Cairo",
       x: 35,
       y: 50,
     };
@@ -1147,10 +1524,28 @@ export default function CustomCardPage({
       toast.success(isArabic ? "تم حذف النص السفلي من ظهر الكارت" : "Back subtitle removed");
       return;
     }
-    if (id === "backQr") {
-      setShowBackQr(false);
+    if (id === "logo") {
+      setLogoDataUrl(null);
       setSelectedElementId(null);
-      toast.success(isArabic ? "تم حذف رمز الـ QR من ظهر الكارت" : "Back QR code removed");
+      toast.success(isArabic ? "تم حذف الصورة الأولى من الكارت" : "Image 1 removed");
+      return;
+    }
+    if (id === "logo2") {
+      setLogo2DataUrl(null);
+      setSelectedElementId(null);
+      toast.success(isArabic ? "تم حذف الصورة الثانية من الكارت" : "Image 2 removed");
+      return;
+    }
+    if (id === "backLogo") {
+      setBackLogoDataUrl(null);
+      setSelectedElementId(null);
+      toast.success(isArabic ? "تم حذف الصورة الأولى من ظهر الكارت" : "Back image 1 removed");
+      return;
+    }
+    if (id === "backLogo2") {
+      setBackLogo2DataUrl(null);
+      setSelectedElementId(null);
+      toast.success(isArabic ? "تم حذف الصورة الثانية من ظهر الكارت" : "Back image 2 removed");
       return;
     }
     setElementsVisibility((prev) => ({ ...prev, [id]: false }));
@@ -1172,7 +1567,7 @@ export default function CustomCardPage({
   const restoreElement = (id) => {
     setElementsVisibility((prev) => ({ ...prev, [id]: true }));
     setSelectedElementId(id);
-    if (id === "name" && !cardName.trim()) setCardName("THENITH");
+    if (id === "name" && !cardName.trim()) setCardName("NAME");
     toast.success(isArabic ? "تمت استعادة العنصر إلى الكارت" : "Element restored to card");
   };
 
@@ -1386,116 +1781,270 @@ export default function CustomCardPage({
     };
   }, [language, searchParams, preselectedProduct]);
 
-  // Handle Image Upload (يدعم جميع صيغ الصور: PNG, JPG, WEBP, SVG)
-  const handleImageUpload = (e) => {
+  // ── Client-side Image Security Validator & Sanitizer ───────────────────────────
+  // Multi-layered defense against malicious files, polyglots, steganography & script injection:
+  // 1. MIME whitelist & file extension whitelist
+  // 2. Dangerous double-extension prevention (.php.jpg, .exe.png, etc.)
+  // 3. Size constraints (max 5MB) & decompression bomb limits (max 8192x8192)
+  // 4. Magic bytes header inspection (verifying genuine JPEG, PNG, WEBP, GIF headers)
+  // 5. Deep SVG content sanitization (blocking script, iframe, foreignObject, on*, javascript:)
+  // 6. Complete canvas re-encoding: decodes raw pixels and outputs a fresh, sterilized PNG
+  const SAFE_IMAGE_MAX_BYTES = 5 * 1024 * 1024; // 5MB limit
+  const validateImageSecurity = async (file) => {
+    // 1. MIME whitelist
+    const allowedMimes = ["image/jpeg", "image/png", "image/webp", "image/gif", "image/svg+xml"];
+    if (!allowedMimes.includes(file.type)) {
+      return {
+        ok: false,
+        reason: isArabic
+          ? "نوع الملف غير مدعوم. يُسمح بـ JPG, PNG, WebP, GIF, SVG فقط"
+          : "Unsupported file type. Only JPG, PNG, WebP, GIF, SVG are allowed",
+      };
+    }
+
+    // 2. Extension whitelist & double-extension blocking
+    const parts = (file.name || "").toLowerCase().split(".");
+    const ext = parts[parts.length - 1] || "";
+    const allowedExts = ["jpg", "jpeg", "png", "webp", "gif", "svg"];
+    if (!allowedExts.includes(ext)) {
+      return { ok: false, reason: isArabic ? "امتداد الملف غير مدعوم" : "Unsupported file extension" };
+    }
+
+    if (parts.length > 2) {
+      const dangerousSubExts = ["php", "phtml", "exe", "sh", "bat", "cmd", "js", "html", "htm", "vbs", "jar", "py", "pl", "cgi", "phar"];
+      for (let i = 1; i < parts.length - 1; i++) {
+        if (dangerousSubExts.includes(parts[i])) {
+          return {
+            ok: false,
+            reason: isArabic
+              ? "تم رفض الملف لأسباب أمنية (امتداد غير آمن)"
+              : "File rejected: suspicious dangerous extension pattern",
+          };
+        }
+      }
+    }
+
+    // 3. File size check
+    if (file.size > SAFE_IMAGE_MAX_BYTES) {
+      return {
+        ok: false,
+        reason: isArabic
+          ? `حجم الصورة يتجاوز ${SAFE_IMAGE_MAX_BYTES / 1024 / 1024}MB — اختر صورة أصغر`
+          : `Image exceeds ${SAFE_IMAGE_MAX_BYTES / 1024 / 1024}MB limit`,
+      };
+    }
+
+    // 4. Magic byte inspection for bitmap images
+    if (file.type !== "image/svg+xml" && ext !== "svg") {
+      try {
+        const buf = await file.slice(0, 12).arrayBuffer();
+        const b = new Uint8Array(buf);
+        const isJpeg = b[0] === 0xFF && b[1] === 0xD8 && b[2] === 0xFF;
+        const isPng = b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4E && b[3] === 0x47;
+        const isWebp = b[0] === 0x52 && b[1] === 0x49 && b[2] === 0x46 && b[3] === 0x46 &&
+          b[8] === 0x57 && b[9] === 0x45 && b[10] === 0x42 && b[11] === 0x50;
+        const isGif = b[0] === 0x47 && b[1] === 0x49 && b[2] === 0x46;
+        if (!isJpeg && !isPng && !isWebp && !isGif) {
+          return {
+            ok: false,
+            reason: isArabic
+              ? "الملف تالف أو تم التلاعب به — رُفض حمايةً لحسابك"
+              : "Corrupted or spoofed image rejected for your security",
+          };
+        }
+      } catch {
+        return { ok: false, reason: isArabic ? "تعذّر فحص الملف أمنياً" : "Could not inspect file" };
+      }
+    } else {
+      // 5. Deep inspection of SVG text to prevent XSS payloads
+      try {
+        const rawSvg = await file.text();
+        const lower = rawSvg.toLowerCase();
+        const forbiddenPatterns = [
+          "<script",
+          "javascript:",
+          "data:text/html",
+          "onload=",
+          "onerror=",
+          "onclick=",
+          "onmouseover=",
+          "<foreignobject",
+          "<iframe",
+          "<object",
+          "<embed",
+        ];
+        for (const pattern of forbiddenPatterns) {
+          if (lower.includes(pattern)) {
+            return {
+              ok: false,
+              reason: isArabic
+                ? "ملف SVG يحتوي على كود غير آمن — رُفض لحماية النظام"
+                : "SVG contains unsafe executable code and was rejected",
+            };
+          }
+        }
+      } catch {
+        return { ok: false, reason: isArabic ? "تعذّر قراءة ملف SVG" : "Could not verify SVG safety" };
+      }
+    }
+
+    return { ok: true };
+  };
+
+  // Re-encode bitmap images into fresh sterilized PNG canvas to strip all EXIF metadata and hidden polyglots
+  const sanitizeImageFile = (file) => {
+    return new Promise((resolve, reject) => {
+      const isSvg = file.type === "image/svg+xml" || (file.name || "").toLowerCase().endsWith(".svg");
+      const reader = new FileReader();
+      reader.onerror = () => reject(new Error(isArabic ? "تعذّر قراءة ملف الصورة" : "Error reading file"));
+      reader.onload = (event) => {
+        const rawDataUrl = event.target.result;
+        if (isSvg) {
+          return resolve(rawDataUrl);
+        }
+        const img = new Image();
+        img.crossOrigin = "anonymous";
+        img.onload = () => {
+          // Decompression bomb prevention
+          if (img.naturalWidth > 8192 || img.naturalHeight > 8192 || img.naturalWidth === 0 || img.naturalHeight === 0) {
+            return reject(new Error(isArabic ? "أبعاد الصورة غير صالحة أو مبالغ فيها" : "Invalid image dimensions"));
+          }
+          try {
+            const canvas = document.createElement("canvas");
+            canvas.width = img.naturalWidth;
+            canvas.height = img.naturalHeight;
+            const ctx = canvas.getContext("2d");
+            ctx.drawImage(img, 0, 0);
+            const sterilizedDataUrl = canvas.toDataURL("image/png", 0.98);
+            resolve(sterilizedDataUrl);
+          } catch {
+            resolve(rawDataUrl);
+          }
+        };
+        img.onerror = () => reject(new Error(isArabic ? "تعذّر فك تشفير محتوى الصورة" : "Failed to decode image data"));
+        img.src = rawDataUrl;
+      };
+      reader.readAsDataURL(file);
+    });
+  };
+
+  // Handle Image Upload – slot: "logo" | "logo2" | "backLogo" | "backLogo2"
+  const handleImageUpload = async (e, slot = "logo") => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    if (!file.type.startsWith("image/")) {
-      toast.error(
-        isArabic
-          ? "يرجى اختيار ملف صورة صالح (PNG, JPG, WEBP, SVG)"
-          : "Please select a valid image file (PNG, JPG, WEBP, SVG)"
-      );
+    // Reset value so user can upload again if needed
+    e.target.value = "";
+
+    const check = await validateImageSecurity(file);
+    if (!check.ok) {
+      toast.error(check.reason);
       return;
     }
 
-    if (file.size > 12 * 1024 * 1024) {
-      toast.error(isArabic ? "حجم الصورة كبير جداً (أقصى حد 12 ميجابايت)" : "Image exceeds 12MB limit");
-      return;
+    try {
+      const cleanDataUrl = await sanitizeImageFile(file);
+      if (slot === "logo2") {
+        setLogo2DataUrl(cleanDataUrl);
+        setElementsVisibility((prev) => ({ ...prev, logo2: true }));
+      } else if (slot === "backLogo") {
+        setBackLogoDataUrl(cleanDataUrl);
+        setElementsVisibility((prev) => ({ ...prev, backLogo: true }));
+      } else if (slot === "backLogo2") {
+        setBackLogo2DataUrl(cleanDataUrl);
+        setElementsVisibility((prev) => ({ ...prev, backLogo2: true }));
+      } else {
+        setLogoDataUrl(cleanDataUrl);
+        setElementsVisibility((prev) => ({ ...prev, logo: true }));
+      }
+      toast.success(isArabic ? "✓ تم فحص الصورة وتطهيرها ورفعها بأمان!" : "✓ Image validated & uploaded safely!");
+    } catch (err) {
+      toast.error(err.message || (isArabic ? "تعذّر معالجة الصورة" : "Failed to process image"));
     }
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      setLogoDataUrl(event.target.result);
-      setElementsVisibility((prev) => ({ ...prev, logo: true }));
-      toast.success(isArabic ? "تم رفع الصورة بنجاح!" : "Image uploaded successfully");
-    };
-    reader.readAsDataURL(file);
   };
   const handleLogoUpload = handleImageUpload;
 
-  // Handle Custom Design Upload (Clears text from panel & card so user artwork is clean)
-  const handleCustomDesignUpload = (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    if (file.size > 15 * 1024 * 1024) {
-      toast.error(isArabic ? "حجم الصورة كبير جداً (أقصى حد 15 ميجابايت)" : "File size exceeds 15MB limit");
-      return;
-    }
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      setCustomBgDataUrl(event.target.result);
-      setSelectedBg("custom");
-      // Clear data from edit panel and remove any text from card
-      setCardName("");
-      setCardJob("");
-      toast.success(
-        isArabic
-          ? "تم رفع تصميمك المخصص وتفريغ نصوص الكارت بنجاح"
-          : "Custom design uploaded. Card text cleared."
-      );
-    };
-    reader.readAsDataURL(file);
-  };
-
-  // Reset to default Thenith signature template
+  // Reset to default template (Adopts admin configuration from Dash / DB)
   const handleResetToDefaultTemplate = (silent = false) => {
-    setSelectedBg("thenith_signature");
-    setCustomSolidBgColor("#0f172a");
-    setCustomBgImage(null);
-    setCustomBgDataUrl(null);
-    setCardName("THENITH");
-    setCardJob("");
-    setSelectedFont("Cairo");
-    setTextColor("#ffffff");
-    setNameSize(24);
-    setNameColor("#ffffff");
-    setJobSize(13);
-    setJobColor("#ffffff");
-    setTextAlign("center");
-    setCustomTexts([]);
-    setLogoDataUrl(null);
-    setLogoPosition("top-right");
-    setLogoSize(55);
-    setLogoFilter("none");
-    setElementsPos(DEFAULT_POSITIONS);
-    setElementsVisibility({
-      name: true,
-      job: true,
-      logo: true,
-      brand: false,
-      tap: false,
-    });
-    setSelectedElementId(null);
-    setBackTitle("Digital Identity Card");
-    setBackTitleColor("");
-    setBackTitleSize(13);
-    setShowBackTitle(true);
-    setBackSubtitle("thenith.com");
-    setBackSubtitleColor("");
-    setBackSubtitleSize(13);
-    setShowBackSubtitle(true);
-    setBackQrValue(userProfileUrl);
-    setBackQrSize(88);
-    setShowBackQr(true);
-    setQrColor("#000000");
-    setBackQrContainerBg("white");
-    setBackCustomTexts([]);
-    setCustomIcons([]);
-    setIsFlipped(false);
-    setActiveCardFace("front");
-
     try {
       localStorage.removeItem(STUDIO_STORAGE_KEY);
     } catch (e) {
       console.warn("Could not remove studio state from localStorage:", e);
     }
 
+    if (adminConfigRef.current) {
+      applyTemplateConfig(adminConfigRef.current);
+    } else {
+      setSelectedBg("thenith_signature");
+      setCustomSolidBgColor("#0f172a");
+      setCustomBgImage(null);
+      setCustomBgDataUrl(null);
+      setCustomBackBgDataUrl(null);
+      setCardName("NAME");
+      setCardJob("");
+      setSelectedFont("Cairo");
+      setNameFont("Cairo");
+      setJobFont("Cairo");
+      setTextColor("#ffffff");
+      setNameSize(24);
+      setNameColor("#ffffff");
+      setJobSize(13);
+      setJobColor("#ffffff");
+      setTextAlign("center");
+      setCustomTexts([]);
+      setLogoDataUrl(null);
+      setLogoPosition("top-right");
+      setLogoSize(55);
+      setLogoFilter("none");
+      setLogo2DataUrl(null);
+      setLogo2Size(55);
+      setLogo2Filter("none");
+      setBackLogoDataUrl(null);
+      setBackLogoSize(55);
+      setBackLogoFilter("none");
+      setBackLogo2DataUrl(null);
+      setBackLogo2Size(55);
+      setBackLogo2Filter("none");
+      setElementsPos(DEFAULT_POSITIONS);
+      setElementsVisibility({
+        name: true,
+        job: true,
+        logo: true,
+        logo2: true,
+        brand: false,
+        tap: false,
+        backLogo: true,
+        backLogo2: true,
+      });
+      setBackTitle("Digital Identity Card");
+      setBackTitleColor("");
+      setBackTitleFont("Cairo");
+      setBackTitleSize(13);
+      setShowBackTitle(true);
+      setBackSubtitle("thenith.com");
+      setBackSubtitleColor("");
+      setBackSubtitleFont("Cairo");
+      setBackSubtitleSize(13);
+      setShowBackSubtitle(true);
+      setBackQrValue(userProfileUrl);
+      setBackQrSize(88);
+      setShowBackQr(true);
+      lastManualQrColorRef.current = "#000000";
+      setQrColor("#000000");
+      setBackQrContainerBg("white");
+      setBackCustomTexts([]);
+      setCustomIcons([]);
+    }
+
+    setSelectedElementId(null);
+    setIsFlipped(false);
+    setActiveCardFace("front");
+
     if (!silent) {
       toast.success(
         isArabic
-          ? "تمت استعادة الكارت للوضع الافتراضي بنجاح"
-          : "Card reset to default successfully"
+          ? "تمت استعادة الكارت للوضع الافتراضي المعتمد"
+          : "Card reset to admin default successfully"
       );
     }
   };
@@ -1547,7 +2096,7 @@ export default function CustomCardPage({
     ctx.lineWidth = 3;
     ctx.strokeRect(6, 6, width - 12, height - 12);
 
-    // 5. Draw Custom Logo / Image if present & visible
+    // 5. Draw Custom Logo / Image 1 if present & visible
     if (logoDataUrl && elementsVisibility.logo) {
       await new Promise((resolve) => {
         const logoImg = new Image();
@@ -1560,11 +2109,51 @@ export default function CustomCardPage({
           const lx = (elementsPos.logo.x / 100) * width - targetW / 2;
           const ly = (elementsPos.logo.y / 100) * height - targetH / 2;
 
+          ctx.save();
+          if (logoFilter === "white") {
+            ctx.filter = "brightness(0) invert(1)";
+          } else if (logoFilter === "black") {
+            ctx.filter = "brightness(0)";
+          } else if (logoFilter === "gold") {
+            ctx.filter = "sepia(1) hue-rotate(5deg) saturate(5) brightness(1.1)";
+          }
           ctx.drawImage(logoImg, lx, ly, targetW, targetH);
+          ctx.restore();
           resolve();
         };
         logoImg.onerror = resolve;
         logoImg.src = logoDataUrl;
+      });
+    }
+
+    // 5b. Draw Custom Logo / Image 2 if present & visible
+    if (logo2DataUrl && elementsVisibility.logo2) {
+      await new Promise((resolve) => {
+        const logo2Img = new Image();
+        logo2Img.crossOrigin = "anonymous";
+        logo2Img.onload = () => {
+          const targetW = (logo2Size || 55) * scale;
+          const aspect = logo2Img.width / logo2Img.height;
+          const targetH = targetW / aspect;
+
+          const pos = elementsPos.logo2 || { x: 16, y: 18 };
+          const lx = (pos.x / 100) * width - targetW / 2;
+          const ly = (pos.y / 100) * height - targetH / 2;
+
+          ctx.save();
+          if (logo2Filter === "white") {
+            ctx.filter = "brightness(0) invert(1)";
+          } else if (logo2Filter === "black") {
+            ctx.filter = "brightness(0)";
+          } else if (logo2Filter === "gold") {
+            ctx.filter = "sepia(1) hue-rotate(5deg) saturate(5) brightness(1.1)";
+          }
+          ctx.drawImage(logo2Img, lx, ly, targetW, targetH);
+          ctx.restore();
+          resolve();
+        };
+        logo2Img.onerror = resolve;
+        logo2Img.src = logo2DataUrl;
       });
     }
 
@@ -1596,8 +2185,11 @@ export default function CustomCardPage({
 
     // 8. Ensure Google WebFont is ready
     try {
-      await document.fonts.load(`bold 60px "${selectedFont}"`);
-      await document.fonts.load(`500 30px "${selectedFont}"`);
+      await document.fonts.load(`bold 60px "${nameFont || 'Cairo'}"`);
+      await document.fonts.load(`500 30px "${jobFont || 'Cairo'}"`);
+      for (const ct of customTexts) {
+        if (ct.font) await document.fonts.load(`500 30px "${ct.font}"`);
+      }
     } catch (e) {
       // Font fallback is fine
     }
@@ -1612,7 +2204,7 @@ export default function CustomCardPage({
       ctx.shadowOffsetY = 2;
 
       const scaledNameSize = Math.round(nameSize * scale);
-      ctx.font = `bold ${scaledNameSize}px "${selectedFont}", sans-serif`;
+      ctx.font = `bold ${scaledNameSize}px ${getFontFamily(nameFont)}`;
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
 
@@ -1625,7 +2217,7 @@ export default function CustomCardPage({
     if (cardJob.trim() && elementsVisibility.job) {
       ctx.save();
       const scaledJobSize = Math.round((jobSize || Math.max(12, nameSize * 0.45)) * scale);
-      ctx.font = `500 ${scaledJobSize}px "${selectedFont}", sans-serif`;
+      ctx.font = `500 ${scaledJobSize}px ${getFontFamily(jobFont)}`;
       ctx.fillStyle = jobColor || (isLightBg ? "rgba(15, 23, 42, 0.78)" : (textColor === "#0f172a" ? "rgba(15, 23, 42, 0.78)" : "rgba(255, 255, 255, 0.82)"));
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
@@ -1642,7 +2234,7 @@ export default function CustomCardPage({
       ctx.save();
       const pos = elementsPos[item.id] || { x: item.x, y: item.y };
       const scaledSize = Math.round((item.size || Math.max(12, nameSize * 0.45)) * scale);
-      ctx.font = `500 ${scaledSize}px "${selectedFont}", sans-serif`;
+      ctx.font = `500 ${scaledSize}px ${getFontFamily(item.font || nameFont)}`;
       ctx.fillStyle = item.color || textColor;
       ctx.shadowColor = "rgba(0, 0, 0, 0.4)";
       ctx.shadowBlur = 8;
@@ -1692,7 +2284,8 @@ export default function CustomCardPage({
     const scale = width / DESIGN_WIDTH;
 
     // 1. Draw matching background
-    if (selectedBg === "custom" && customBgDataUrl) {
+    const backBg = customBackBgDataUrl || customBgDataUrl;
+    if (selectedBg === "custom" && backBg) {
       await new Promise((resolve) => {
         const img = new Image();
         img.crossOrigin = "anonymous";
@@ -1701,7 +2294,7 @@ export default function CustomCardPage({
           resolve();
         };
         img.onerror = resolve;
-        img.src = customBgDataUrl;
+        img.src = backBg;
       });
     } else if (selectedBg === "custom_solid_color") {
       ctx.fillStyle = customSolidBgColor;
@@ -1752,13 +2345,21 @@ export default function CustomCardPage({
     }
 
     // 4. Draw Typography Overlays at dynamic positions
+    try {
+      if (showBackTitle && backTitle) await document.fonts.load(`600 30px "${backTitleFont || 'Cairo'}"`);
+      if (showBackSubtitle && backSubtitle) await document.fonts.load(`bold 30px "${backSubtitleFont || 'Cairo'}"`);
+      for (const bct of backCustomTexts) {
+        if (bct.font) await document.fonts.load(`500 30px "${bct.font}"`);
+      }
+    } catch (e) { }
+
     ctx.save();
     if (showBackTitle && backTitle) {
       const titlePos = elementsPos.backTitle || { x: 28, y: 20 };
       const titleFill = backTitleColor || (isLightBg ? "#0f172a" : "#ffffff");
       ctx.fillStyle = titleFill;
       const titleFontSize = Math.round(backTitleSize * scale);
-      ctx.font = `600 ${titleFontSize}px "${selectedFont}", 'Outfit', sans-serif`;
+      ctx.font = `600 ${titleFontSize}px ${getFontFamily(backTitleFont)}`;
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
       ctx.fillText(backTitle, (titlePos.x / 100) * width, (titlePos.y / 100) * height);
@@ -1772,7 +2373,7 @@ export default function CustomCardPage({
         const ctFill = ct.color || backTitleColor || (isLightBg ? "#0f172a" : "#ffffff");
         ctx.fillStyle = ctFill;
         const ctFontSize = Math.round(((ct.size || 13)) * scale);
-        ctx.font = `500 ${ctFontSize}px "${selectedFont}", 'Outfit', sans-serif`;
+        ctx.font = `500 ${ctFontSize}px ${getFontFamily(ct.font || backTitleFont)}`;
         ctx.textAlign = "center";
         ctx.textBaseline = "middle";
         ctx.fillText(ct.text, (ctPos.x / 100) * width, (ctPos.y / 100) * height);
@@ -1784,14 +2385,75 @@ export default function CustomCardPage({
       const subtitleFill = backSubtitleColor || (isLightBg ? "#0f172a" : "#ffffff");
       ctx.fillStyle = subtitleFill;
       const subtitleFontSize = Math.round(backSubtitleSize * scale);
-      ctx.font = `bold ${subtitleFontSize}px "${selectedFont}", 'Outfit', sans-serif`;
+      ctx.font = `bold ${subtitleFontSize}px ${getFontFamily(backSubtitleFont)}`;
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
       ctx.fillText(backSubtitle, (subPos.x / 100) * width, (subPos.y / 100) * height);
     }
     ctx.restore();
 
-    // 5. Draw Custom Icons & Images on Back Face
+    // 5. Draw Custom Logos & Images on Back Face (slot 1 & 2)
+    if (backLogoDataUrl && elementsVisibility.backLogo) {
+      await new Promise((resolve) => {
+        const img = new Image();
+        img.crossOrigin = "anonymous";
+        img.onload = () => {
+          const targetW = (backLogoSize || 55) * scale;
+          const aspect = img.width / img.height;
+          const targetH = targetW / aspect;
+
+          const pos = elementsPos.backLogo || { x: 28, y: 50 };
+          const lx = (pos.x / 100) * width - targetW / 2;
+          const ly = (pos.y / 100) * height - targetH / 2;
+
+          ctx.save();
+          if (backLogoFilter === "white") {
+            ctx.filter = "brightness(0) invert(1)";
+          } else if (backLogoFilter === "black") {
+            ctx.filter = "brightness(0)";
+          } else if (backLogoFilter === "gold") {
+            ctx.filter = "sepia(1) hue-rotate(5deg) saturate(5) brightness(1.1)";
+          }
+          ctx.drawImage(img, lx, ly, targetW, targetH);
+          ctx.restore();
+          resolve();
+        };
+        img.onerror = resolve;
+        img.src = backLogoDataUrl;
+      });
+    }
+
+    if (backLogo2DataUrl && elementsVisibility.backLogo2) {
+      await new Promise((resolve) => {
+        const img = new Image();
+        img.crossOrigin = "anonymous";
+        img.onload = () => {
+          const targetW = (backLogo2Size || 55) * scale;
+          const aspect = img.width / img.height;
+          const targetH = targetW / aspect;
+
+          const pos = elementsPos.backLogo2 || { x: 50, y: 50 };
+          const lx = (pos.x / 100) * width - targetW / 2;
+          const ly = (pos.y / 100) * height - targetH / 2;
+
+          ctx.save();
+          if (backLogo2Filter === "white") {
+            ctx.filter = "brightness(0) invert(1)";
+          } else if (backLogo2Filter === "black") {
+            ctx.filter = "brightness(0)";
+          } else if (backLogo2Filter === "gold") {
+            ctx.filter = "sepia(1) hue-rotate(5deg) saturate(5) brightness(1.1)";
+          }
+          ctx.drawImage(img, lx, ly, targetW, targetH);
+          ctx.restore();
+          resolve();
+        };
+        img.onerror = resolve;
+        img.src = backLogo2DataUrl;
+      });
+    }
+
+    // 6. Draw Custom Icons & Images on Back Face
     for (const icon of customIcons.filter((ic) => ic.face === "back")) {
       await new Promise((resolve) => {
         const img = new Image();
@@ -1891,15 +2553,31 @@ export default function CustomCardPage({
         jobColor: jobColor || textColor,
         jobSize: jobSize || Math.max(12, nameSize * 0.45),
         font: selectedFont,
+        nameFont,
+        jobFont,
+        backTitleFont,
+        backSubtitleFont,
         textColor,
         bgType: selectedBg,
         image: thumbnailUrl, // Fast lightweight thumbnail for instant cart preview
         hasBackImage: Boolean(backHighResDataUrl),
         logoUrl: logoDataUrl || null,
+        logo2Url: logo2DataUrl || null,
+        backLogoUrl: backLogoDataUrl || null,
+        backLogo2Url: backLogo2DataUrl || null,
         customTexts: customTexts.map((t) => ({
           text: t.text,
           size: t.size,
           color: t.color || textColor,
+          font: t.font || nameFont || "Cairo",
+          x: elementsPos[t.id]?.x ?? t.x,
+          y: elementsPos[t.id]?.y ?? t.y,
+        })),
+        backCustomTexts: backCustomTexts.map((t) => ({
+          text: t.text,
+          size: t.size,
+          color: t.color || backTitleColor || textColor,
+          font: t.font || backTitleFont || "Cairo",
           x: elementsPos[t.id]?.x ?? t.x,
           y: elementsPos[t.id]?.y ?? t.y,
         })),
@@ -1966,24 +2644,16 @@ export default function CustomCardPage({
       <div className="space-y-4 pt-6 border-t border-slate-200 dark:border-slate-800">
         <div className="flex items-center gap-2 pb-1">
           <h3 className="text-sm font-black text-slate-800 dark:text-slate-100">
-            {isArabic
-              ? targetFace === "front"
-                ? "الأيقونات"
-                : "أيقونات ظهر الكارت"
-              : targetFace === "front"
-                ? "Icons"
-                : "Back Face Icons"}
+            {isArabic ? "أيقونات" : "Icons"}
           </h3>
         </div>
 
         {/* Popular Preset Icons Grid */}
         <div>
           <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-2">
-            {isArabic
-              ? `الأيقونات (انقر للإضافة إلى ${isFlipped ? "ظهر الكارت" : "وجه الكارت الأمامي"})`
-              : `Icons (Click to add to ${isFlipped ? "Back Face" : "Front Face"})`}
+            {isArabic ? "أيقونات" : "Icons"}
           </label>
-          <div className="grid grid-cols-5 gap-2">
+          <div className="grid grid-cols-4 sm:grid-cols-6 gap-2 max-h-72 overflow-y-auto p-1.5 rounded-xl border border-slate-200/60 dark:border-slate-800/60 bg-slate-100/40 dark:bg-slate-900/40">
             {POPULAR_ICONS.map((preset) => (
               <button
                 key={preset.id}
@@ -2019,12 +2689,20 @@ export default function CustomCardPage({
               >
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2 min-w-0">
-                    <div className="w-8 h-8 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 flex items-center justify-center p-1 shrink-0">
-                      <img
-                        src={iconItem.src}
-                        alt={iconItem.name}
-                        className="w-full h-full object-contain"
-                      />
+                    <div className="w-8 h-8 rounded-lg bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 flex items-center justify-center p-1.5 shrink-0 overflow-hidden shadow-xs">
+                      {iconItem.svg ? (
+                        <div
+                          className="w-5 h-5 flex items-center justify-center [&>svg]:w-full [&>svg]:h-full drop-shadow-xs"
+                          style={{ color: iconItem.color || textColor || "#4f46e5" }}
+                          dangerouslySetInnerHTML={{ __html: iconItem.svg }}
+                        />
+                      ) : (
+                        <img
+                          src={iconItem.src}
+                          alt={iconItem.name}
+                          className="w-full h-full object-contain"
+                        />
+                      )}
                     </div>
                     <span className="text-xs font-bold text-slate-800 dark:text-slate-200 truncate">
                       {iconItem.name || (isArabic ? `أيقونة ${idx + 1}` : `Icon ${idx + 1}`)}
@@ -2232,7 +2910,7 @@ export default function CustomCardPage({
                     {/* Subtle glossy sheen reflection */}
                     <div className="absolute inset-0 bg-gradient-to-tr from-white/0 via-white/5 to-white/10 pointer-events-none" />
 
-                    {/* ── 1. CUSTOM IMAGE / LOGO ELEMENT ── */}
+                    {/* ── 1. CUSTOM IMAGE / LOGO ELEMENT (SLOT 1) ── */}
                     {elementsVisibility.logo && logoDataUrl && (
                       <div
                         data-element-id="logo"
@@ -2257,7 +2935,18 @@ export default function CustomCardPage({
                         {selectedElementId === "logo" && (
                           <div className={`absolute ${(elementsPos.logo.y ?? 18) < 24 ? "-bottom-7" : "-top-7"} left-1/2 -translate-x-1/2 flex items-center gap-1.5 bg-slate-900/95 border border-indigo-500/80 rounded-full px-2.5 py-0.5 shadow-xl text-[10px] text-white z-30 whitespace-nowrap`}>
                             <Move className="w-3 h-3 text-indigo-400" />
-                            <span className="font-bold">{isArabic ? "صورة" : "Image"}</span>
+                            <span className="font-bold">{isArabic ? "صورة 1" : "Image 1"}</span>
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleCenterElement("logo");
+                              }}
+                              className="hover:text-indigo-300 p-0.5 transition-colors cursor-pointer flex items-center gap-0.5"
+                              title={isArabic ? "توسيط" : "Center"}
+                            >
+                              <AlignCenter className="w-3 h-3 text-indigo-300" />
+                            </button>
                             <button
                               type="button"
                               onClick={(e) => {
@@ -2283,6 +2972,75 @@ export default function CustomCardPage({
                                 : logoFilter === "black"
                                   ? "brightness(0)"
                                   : logoFilter === "gold"
+                                    ? "sepia(1) hue-rotate(5deg) saturate(5) brightness(1.1)"
+                                    : "none",
+                          }}
+                        />
+                      </div>
+                    )}
+
+                    {/* ── 1B. CUSTOM IMAGE / LOGO 2 ELEMENT (SLOT 2) ── */}
+                    {elementsVisibility.logo2 && logo2DataUrl && (
+                      <div
+                        data-element-id="logo2"
+                        onMouseDown={(e) => startDrag("logo2", e)}
+                        onTouchStart={(e) => startDrag("logo2", e)}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectedElementId("logo2");
+                          setActiveTab("logo");
+                        }}
+                        style={{
+                          left: `${elementsPos.logo2?.x ?? 16}%`,
+                          top: `${elementsPos.logo2?.y ?? 18}%`,
+                          transform: "translate(-50%, -50%)",
+                          width: `${logo2Size}px`,
+                        }}
+                        className={`absolute z-20 group transition-shadow select-none touch-none ${selectedElementId === "logo2"
+                          ? "ring-2 ring-indigo-500 ring-offset-2 ring-offset-transparent bg-indigo-500/10 rounded-xl p-1.5 shadow-2xl"
+                          : "hover:ring-1 hover:ring-indigo-400/60 hover:bg-white/5 rounded-xl p-1 cursor-grab active:cursor-grabbing"
+                          }`}
+                      >
+                        {selectedElementId === "logo2" && (
+                          <div className={`absolute ${(elementsPos.logo2?.y ?? 18) < 24 ? "-bottom-7" : "-top-7"} left-1/2 -translate-x-1/2 flex items-center gap-1.5 bg-slate-900/95 border border-indigo-500/80 rounded-full px-2.5 py-0.5 shadow-xl text-[10px] text-white z-30 whitespace-nowrap`}>
+                            <Move className="w-3 h-3 text-indigo-400" />
+                            <span className="font-bold">{isArabic ? "صورة 2" : "Image 2"}</span>
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleCenterElement("logo2");
+                              }}
+                              className="hover:text-indigo-300 p-0.5 transition-colors cursor-pointer flex items-center gap-0.5"
+                              title={isArabic ? "توسيط" : "Center"}
+                            >
+                              <AlignCenter className="w-3 h-3 text-indigo-300" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                deleteElement("logo2");
+                              }}
+                              className="hover:text-rose-400 p-0.5 transition-colors cursor-pointer"
+                              title={isArabic ? "حذف الصورة" : "Delete"}
+                            >
+                              <Trash2 className="w-3 h-3 text-rose-400" />
+                            </button>
+                          </div>
+                        )}
+
+                        <img
+                          src={logo2DataUrl}
+                          alt="Custom Logo 2"
+                          className="w-full h-auto object-contain pointer-events-none"
+                          style={{
+                            filter:
+                              logo2Filter === "white"
+                                ? "brightness(0) invert(1)"
+                                : logo2Filter === "black"
+                                  ? "brightness(0)"
+                                  : logo2Filter === "gold"
                                     ? "sepia(1) hue-rotate(5deg) saturate(5) brightness(1.1)"
                                     : "none",
                           }}
@@ -2390,7 +3148,7 @@ export default function CustomCardPage({
                         <h3
                           className="font-bold tracking-tight select-none drop-shadow-lg leading-tight break-words text-center"
                           style={{
-                            fontFamily: currentFontObj?.cssFamily,
+                            fontFamily: getFontFamily(nameFont),
                             color: nameColor || textColor,
                             fontSize: `${nameSize}px`,
                           }}
@@ -2453,7 +3211,7 @@ export default function CustomCardPage({
                         <p
                           className="font-medium select-none opacity-85 drop-shadow leading-snug break-words text-center"
                           style={{
-                            fontFamily: currentFontObj?.cssFamily,
+                            fontFamily: getFontFamily(jobFont),
                             color: jobColor || textColor,
                             fontSize: `${jobSize || Math.max(12, nameSize * 0.45)}px`,
                           }}
@@ -2517,7 +3275,7 @@ export default function CustomCardPage({
                         <p
                           className="font-medium select-none drop-shadow leading-snug break-words text-center"
                           style={{
-                            fontFamily: currentFontObj?.cssFamily,
+                            fontFamily: getFontFamily(item.font || nameFont),
                             color: item.color || textColor,
                             fontSize: `${item.size || Math.max(12, nameSize * 0.45)}px`,
                           }}
@@ -2655,9 +3413,9 @@ export default function CustomCardPage({
                       left: 0,
                       width: "100%",
                       height: "100%",
-                      ...(selectedBg === "custom" && customBgDataUrl
+                      ...(selectedBg === "custom" && (customBackBgDataUrl || customBgDataUrl)
                         ? {
-                          backgroundImage: `url(${customBgDataUrl})`,
+                          backgroundImage: `url(${customBackBgDataUrl || customBgDataUrl})`,
                           backgroundSize: "cover",
                           backgroundPosition: "center",
                         }
@@ -2721,8 +3479,9 @@ export default function CustomCardPage({
                           </div>
                         )}
                         <span
-                          className="font-semibold font-['Outfit'] tracking-wide drop-shadow-sm whitespace-nowrap"
+                          className="font-semibold tracking-wide drop-shadow-sm whitespace-nowrap"
                           style={{
+                            fontFamily: getFontFamily(backTitleFont),
                             color: backTitleColor || (isLightBg ? "#0f172a" : "#ffffff"),
                             fontSize: `${backTitleSize}px`,
                           }}
@@ -2844,6 +3603,7 @@ export default function CustomCardPage({
                         <span
                           className="font-medium drop-shadow-sm whitespace-nowrap"
                           style={{
+                            fontFamily: getFontFamily(item.font || backTitleFont),
                             color: item.color || backTitleColor || (isLightBg ? "#0f172a" : "#ffffff"),
                             fontSize: `${item.size || 12}px`,
                           }}
@@ -2971,8 +3731,9 @@ export default function CustomCardPage({
                           </div>
                         )}
                         <span
-                          className="font-bold font-['Outfit'] tracking-tight drop-shadow-sm whitespace-nowrap"
+                          className="font-bold tracking-tight drop-shadow-sm whitespace-nowrap"
                           style={{
+                            fontFamily: getFontFamily(backSubtitleFont),
                             color: backSubtitleColor || (isLightBg ? "#0f172a" : "#ffffff"),
                             fontSize: `${backSubtitleSize}px`,
                           }}
@@ -2981,12 +3742,146 @@ export default function CustomCardPage({
                         </span>
                       </div>
                     )}
+
+                    {/* Back Logo 1 (Draggable on Back Face) */}
+                    {elementsVisibility.backLogo && backLogoDataUrl && (
+                      <div
+                        data-element-id="backLogo"
+                        onMouseDown={(e) => startDrag("backLogo", e)}
+                        onTouchStart={(e) => startDrag("backLogo", e)}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectedElementId("backLogo");
+                        }}
+                        style={{
+                          left: `${elementsPos.backLogo?.x ?? 28}%`,
+                          top: `${elementsPos.backLogo?.y ?? 50}%`,
+                          transform: "translate(-50%, -50%)",
+                          width: `${backLogoSize}px`,
+                        }}
+                        className={`absolute z-20 group transition-shadow select-none touch-none ${selectedElementId === "backLogo"
+                          ? "ring-2 ring-indigo-500 ring-offset-2 ring-offset-transparent bg-indigo-500/10 rounded-xl p-1.5 shadow-2xl"
+                          : "hover:ring-1 hover:ring-indigo-400/60 hover:bg-white/5 rounded-xl p-1 cursor-grab active:cursor-grabbing"
+                          }`}
+                      >
+                        {selectedElementId === "backLogo" && (
+                          <div className={`absolute ${(elementsPos.backLogo?.y ?? 50) < 24 ? "-bottom-7" : "-top-7"} left-1/2 -translate-x-1/2 flex items-center gap-1.5 bg-slate-900/95 border border-indigo-500/80 rounded-full px-2.5 py-0.5 shadow-xl text-[10px] text-white z-30 whitespace-nowrap`}>
+                            <Move className="w-3 h-3 text-indigo-400" />
+                            <span className="font-bold">{isArabic ? "صورة 1 (الظهر)" : "Back Image 1"}</span>
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleCenterElement("backLogo");
+                              }}
+                              className="hover:text-indigo-300 p-0.5 transition-colors cursor-pointer flex items-center gap-0.5"
+                              title={isArabic ? "توسيط" : "Center"}
+                            >
+                              <AlignCenter className="w-3 h-3 text-indigo-300" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                deleteElement("backLogo");
+                              }}
+                              className="hover:text-rose-400 p-0.5 transition-colors cursor-pointer"
+                              title={isArabic ? "حذف" : "Delete"}
+                            >
+                              <Trash2 className="w-3 h-3 text-rose-400" />
+                            </button>
+                          </div>
+                        )}
+                        <img
+                          src={backLogoDataUrl}
+                          alt="Back Logo 1"
+                          className="w-full h-auto object-contain pointer-events-none"
+                          style={{
+                            filter:
+                              backLogoFilter === "white"
+                                ? "brightness(0) invert(1)"
+                                : backLogoFilter === "black"
+                                  ? "brightness(0)"
+                                  : backLogoFilter === "gold"
+                                    ? "sepia(1) hue-rotate(5deg) saturate(5) brightness(1.1)"
+                                    : "none",
+                          }}
+                        />
+                      </div>
+                    )}
+
+                    {/* Back Logo 2 (Draggable on Back Face) */}
+                    {elementsVisibility.backLogo2 && backLogo2DataUrl && (
+                      <div
+                        data-element-id="backLogo2"
+                        onMouseDown={(e) => startDrag("backLogo2", e)}
+                        onTouchStart={(e) => startDrag("backLogo2", e)}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectedElementId("backLogo2");
+                        }}
+                        style={{
+                          left: `${elementsPos.backLogo2?.x ?? 50}%`,
+                          top: `${elementsPos.backLogo2?.y ?? 50}%`,
+                          transform: "translate(-50%, -50%)",
+                          width: `${backLogo2Size}px`,
+                        }}
+                        className={`absolute z-20 group transition-shadow select-none touch-none ${selectedElementId === "backLogo2"
+                          ? "ring-2 ring-indigo-500 ring-offset-2 ring-offset-transparent bg-indigo-500/10 rounded-xl p-1.5 shadow-2xl"
+                          : "hover:ring-1 hover:ring-indigo-400/60 hover:bg-white/5 rounded-xl p-1 cursor-grab active:cursor-grabbing"
+                          }`}
+                      >
+                        {selectedElementId === "backLogo2" && (
+                          <div className={`absolute ${(elementsPos.backLogo2?.y ?? 50) < 24 ? "-bottom-7" : "-top-7"} left-1/2 -translate-x-1/2 flex items-center gap-1.5 bg-slate-900/95 border border-indigo-500/80 rounded-full px-2.5 py-0.5 shadow-xl text-[10px] text-white z-30 whitespace-nowrap`}>
+                            <Move className="w-3 h-3 text-indigo-400" />
+                            <span className="font-bold">{isArabic ? "صورة 2 (الظهر)" : "Back Image 2"}</span>
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleCenterElement("backLogo2");
+                              }}
+                              className="hover:text-indigo-300 p-0.5 transition-colors cursor-pointer flex items-center gap-0.5"
+                              title={isArabic ? "توسيط" : "Center"}
+                            >
+                              <AlignCenter className="w-3 h-3 text-indigo-300" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                deleteElement("backLogo2");
+                              }}
+                              className="hover:text-rose-400 p-0.5 transition-colors cursor-pointer"
+                              title={isArabic ? "حذف" : "Delete"}
+                            >
+                              <Trash2 className="w-3 h-3 text-rose-400" />
+                            </button>
+                          </div>
+                        )}
+                        <img
+                          src={backLogo2DataUrl}
+                          alt="Back Logo 2"
+                          className="w-full h-auto object-contain pointer-events-none"
+                          style={{
+                            filter:
+                              backLogo2Filter === "white"
+                                ? "brightness(0) invert(1)"
+                                : backLogo2Filter === "black"
+                                  ? "brightness(0)"
+                                  : backLogo2Filter === "gold"
+                                    ? "sepia(1) hue-rotate(5deg) saturate(5) brightness(1.1)"
+                                    : "none",
+                          }}
+                        />
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
             </div>
 
-            {/* ── INTERACTIVE CANVAS CONTROLS & RESTORE BAR (تتحرك مع السكرول ولا تثبت مع الكارت) ── */}
+            {/* ── INTERACTIVE CANVAS CONTROLS (تتحرك مع السكرول ولا تثبت مع الكارت) ── */}
             <div className="w-full max-w-[470px] mt-2 mb-1 px-1">
               <div className="flex items-center text-[11px] text-slate-500 dark:text-slate-400">
                 <span className="flex items-center gap-1.5 font-medium">
@@ -2996,91 +3891,37 @@ export default function CustomCardPage({
                     : "Drag any element freely across card, or click to select & delete"}
                 </span>
               </div>
-
-              {/* Restore Bar for Hidden/Deleted Elements */}
-              {Object.entries(elementsVisibility).some(([_, v]) => !v) && (
-                <div className="flex flex-wrap items-center gap-1.5 mt-2 p-2 rounded-xl bg-amber-500/10 border border-amber-500/20 text-xs">
-                  <span className="text-[11px] font-bold text-amber-600 dark:text-amber-400">
-                    {isArabic ? "عناصر محذوفة:" : "Hidden Elements:"}
-                  </span>
-                  {!elementsVisibility.name && (
-                    <button
-                      type="button"
-                      onClick={() => restoreElement("name")}
-                      className="px-2 py-0.5 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-700 dark:text-amber-300 text-[11px] font-bold flex items-center gap-1 cursor-pointer transition-colors"
-                    >
-                      <Plus className="w-3 h-3" /> {isArabic ? "إعادة الاسم" : "Restore Name"}
-                    </button>
-                  )}
-                  {!elementsVisibility.job && (
-                    <button
-                      type="button"
-                      onClick={() => restoreElement("job")}
-                      className="px-2 py-0.5 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-700 dark:text-amber-300 text-[11px] font-bold flex items-center gap-1 cursor-pointer transition-colors"
-                    >
-                      <Plus className="w-3 h-3" /> {isArabic ? "إعادة الوظيفة" : "Restore Job"}
-                    </button>
-                  )}
-                  {!elementsVisibility.logo && logoDataUrl && (
-                    <button
-                      type="button"
-                      onClick={() => restoreElement("logo")}
-                      className="px-2 py-0.5 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-700 dark:text-amber-300 text-[11px] font-bold flex items-center gap-1 cursor-pointer transition-colors"
-                    >
-                      <Plus className="w-3 h-3" /> {isArabic ? "إعادة الصورة" : "Restore Image"}
-                    </button>
-                  )}
-                  {!elementsVisibility.brand && (
-                    <button
-                      type="button"
-                      onClick={() => restoreElement("brand")}
-                      className="px-2 py-0.5 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-700 dark:text-amber-300 text-[11px] font-bold flex items-center gap-1 cursor-pointer transition-colors"
-                    >
-                      <Plus className="w-3 h-3" /> Thenith
-                    </button>
-                  )}
-                  {!elementsVisibility.tap && (
-                    <button
-                      type="button"
-                      onClick={() => restoreElement("tap")}
-                      className="px-2 py-0.5 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-700 dark:text-amber-300 text-[11px] font-bold flex items-center gap-1 cursor-pointer transition-colors"
-                    >
-                      <Plus className="w-3 h-3" /> Tap to connect
-                    </button>
-                  )}
-                </div>
-              )}
             </div>
 
             {/* ── BACKGROUND CONTROLS TABS (خلفيات جاهزة & شريط الألوان الصريحة) ── */}
             <div className="w-full max-w-[470px] mt-2.5">
               <div className="relative p-2.5 sm:p-3 rounded-2xl bg-white/90 dark:bg-slate-900/90 backdrop-blur-xl border border-slate-200/90 dark:border-white/10 shadow-md">
-                {/* Tabs Switcher: خلفيات جاهزة | شريط الألوان الصريحة */}
+                {/* Tabs Switcher: خلفيات جاهزة | لون | رفع كارت (وش وضهر) */}
                 <div className="flex items-center gap-1.5 p-1 bg-slate-100 dark:bg-slate-950 rounded-xl border border-slate-200 dark:border-slate-800 mb-2.5">
                   <button
                     type="button"
                     onClick={() => setBgSubTab("presets")}
-                    className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${bgSubTab === "presets"
+                    className={`flex-1 py-1.5 px-2 rounded-lg text-[11px] font-bold transition-all flex items-center justify-center gap-1 cursor-pointer truncate ${bgSubTab === "presets"
                       ? "bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 shadow-sm border border-slate-200/60 dark:border-white/10"
                       : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
                       }`}
                   >
-                    <span>{isArabic ? "خلفيات جاهزة" : "Ready Backgrounds"}</span>
+                    <span>{isArabic ? "خلفيات جاهزة" : "Ready"}</span>
                   </button>
 
                   <button
                     type="button"
                     onClick={() => setBgSubTab("pure_color")}
-                    className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${bgSubTab === "pure_color"
+                    className={`flex-1 py-1.5 px-2 rounded-lg text-[11px] font-bold transition-all flex items-center justify-center gap-1 cursor-pointer truncate ${bgSubTab === "pure_color"
                       ? "bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 shadow-sm border border-slate-200/60 dark:border-white/10"
                       : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
                       }`}
                   >
                     <span
-                      className="w-3 h-3 rounded-full shrink-0 border border-black/15 dark:border-white/20"
+                      className="w-2.5 h-2.5 rounded-full shrink-0 border border-black/15 dark:border-white/20"
                       style={{ backgroundColor: customSolidBgColor }}
                     />
-                    <span>{isArabic ? "لون" : "Color"}</span>
+                    <span>{isArabic ? "اختيار لون" : "Color"}</span>
                   </button>
                 </div>
 
@@ -3139,11 +3980,6 @@ export default function CustomCardPage({
                         <span className="text-xs font-bold text-slate-800 dark:text-slate-100">
                           {isArabic ? "اسحب يمين وشمال لتغيير اللون" : "Drag slider left & right"}
                         </span>
-                      </div>
-
-                      <div className="flex items-center gap-0.5 font-mono text-[11px] font-bold px-2 py-0.5 rounded-lg bg-slate-100 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-slate-800 dark:text-slate-200 shadow-2xs">
-                        <span className="text-slate-400">#</span>
-                        <span className="uppercase">{customSolidBgColor.replace("#", "")}</span>
                       </div>
                     </div>
 
@@ -3229,7 +4065,7 @@ export default function CustomCardPage({
                   <div className="space-y-5">
                     <div className="flex items-center gap-2 pb-2 border-b border-slate-100 dark:border-slate-800">
                       <h3 className="text-sm font-black text-slate-800 dark:text-slate-100">
-                        {isArabic ? "البيانات والخط" : "Text & Typography"}
+                        {isArabic ? "الوجه الأمامي للبطاقة" : "Card Front Face"}
                       </h3>
                     </div>
 
@@ -3295,6 +4131,16 @@ export default function CustomCardPage({
                             value={nameSize}
                             onChange={(e) => setNameSize(Number(e.target.value))}
                             className="flex-1 accent-indigo-500 cursor-pointer h-1.5"
+                          />
+                        </div>
+                        <div className="space-y-1.5 pt-1">
+                          <span className="text-[11px] font-bold text-slate-600 dark:text-slate-400">
+                            {isArabic ? "نوع الخط:" : "Font:"}
+                          </span>
+                          <FontPickerSelect
+                            value={nameFont}
+                            onChange={setNameFont}
+                            isArabic={isArabic}
                           />
                         </div>
                       </div>
@@ -3370,6 +4216,16 @@ export default function CustomCardPage({
                             value={jobSize}
                             onChange={(e) => setJobSize(Number(e.target.value))}
                             className="flex-1 accent-indigo-500 cursor-pointer h-1.5"
+                          />
+                        </div>
+                        <div className="space-y-1.5 pt-1">
+                          <span className="text-[11px] font-bold text-slate-600 dark:text-slate-400">
+                            {isArabic ? "نوع الخط:" : "Font:"}
+                          </span>
+                          <FontPickerSelect
+                            value={jobFont}
+                            onChange={setJobFont}
+                            isArabic={isArabic}
                           />
                         </div>
                       </div>
@@ -3453,6 +4309,16 @@ export default function CustomCardPage({
                                   className="flex-1 accent-indigo-500 cursor-pointer h-1.5"
                                 />
                               </div>
+                              <div className="space-y-1.5 pt-1">
+                                <span className="text-[11px] font-bold text-slate-600 dark:text-slate-400">
+                                  {isArabic ? "نوع الخط:" : "Font:"}
+                                </span>
+                                <FontPickerSelect
+                                  value={item.font || nameFont || "Cairo"}
+                                  onChange={(val) => handleUpdateCustomText(item.id, "font", val)}
+                                  isArabic={isArabic}
+                                />
+                              </div>
                             </div>
 
                             {/* Alignment & Position Controls */}
@@ -3478,64 +4344,6 @@ export default function CustomCardPage({
                         <Plus className="w-4 h-4" />
                         <span>{isArabic ? " إضافة نص جديد" : "Add New Text "}</span>
                       </button>
-                    </div>
-
-                    {/* Font Selection Dropdown */}
-                    <div>
-                      <div className="flex items-center justify-between mb-2">
-                        <label className="block text-xs font-bold text-slate-700 dark:text-slate-300">
-                          {isArabic ? "نوع الخط " : "Typography Font "}
-                        </label>
-                      </div>
-
-                      <div className="relative">
-                        <select
-                          value={selectedFont}
-                          onChange={(e) => setSelectedFont(e.target.value)}
-                          className="w-full rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 p-3.5 text-sm font-bold text-slate-900 dark:text-white outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 appearance-none cursor-pointer transition-all pe-10"
-                          style={{ fontFamily: currentFontObj?.cssFamily }}
-                        >
-                          <optgroup label={isArabic ? "── خطوط عربية عصرية ──" : "── Modern Arabic ──"}>
-                            {FONT_OPTIONS.filter((f) => f.group === "arabic_modern").map((font) => (
-                              <option
-                                key={font.id}
-                                value={font.id}
-                                className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white py-2"
-                                style={{ fontFamily: font.cssFamily }}
-                              >
-                                {isArabic ? font.nameAr : font.nameEn}
-                              </option>
-                            ))}
-                          </optgroup>
-                          <optgroup label={isArabic ? "── خطوط فخمة وأصيلة ──" : "── Luxury & Calligraphic ──"}>
-                            {FONT_OPTIONS.filter((f) => f.group === "luxury").map((font) => (
-                              <option
-                                key={font.id}
-                                value={font.id}
-                                className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white py-2"
-                                style={{ fontFamily: font.cssFamily }}
-                              >
-                                {isArabic ? font.nameAr : font.nameEn}
-                              </option>
-                            ))}
-                          </optgroup>
-                          <optgroup label={isArabic ? "── خطوط إنجليزية وعالمية ──" : "── Global & English ──"}>
-                            {FONT_OPTIONS.filter((f) => f.group === "english").map((font) => (
-                              <option
-                                key={font.id}
-                                value={font.id}
-                                className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white py-2"
-                                style={{ fontFamily: font.cssFamily }}
-                              >
-                                {isArabic ? font.nameAr : font.nameEn}
-                              </option>
-                            ))}
-                          </optgroup>
-                        </select>
-                        <div className="pointer-events-none absolute inset-y-0 end-0 flex items-center px-3.5 text-slate-400">
-                          <ChevronDown className="w-4 h-4" />
-                        </div>
-                      </div>
                     </div>
 
                     {/* Master Text Color Selection (توحيد لون كافة النصوص) */}
@@ -3602,66 +4410,75 @@ export default function CustomCardPage({
 
                   </div>
 
-                  {/* SECTION 2: PHOTO / IMAGE UPLOAD */}
+                  {/* SECTION 2: PHOTO / IMAGE UPLOAD (MAX 2) */}
                   <div className="space-y-5 pt-6 border-t border-slate-200 dark:border-slate-800">
-                    <div className="flex items-center gap-2 pb-2">
+                    <div className="flex items-center justify-between pb-1">
                       <h3 className="text-sm font-black text-slate-800 dark:text-slate-100 flex items-center gap-2">
                         <ImageIcon className="w-4 h-4 text-indigo-500" />
-                        <span>{isArabic ? "رفع الصور والشعار" : "Photos & Image Upload"}</span>
+                        <span>{isArabic ? "رفع الصور والشعار" : "Photos & Logos"}</span>
                       </h3>
+                      <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 border border-indigo-200/60 dark:border-indigo-800/60">
+                        {isArabic
+                          ? `الصور: ${Number(Boolean(logoDataUrl)) + Number(Boolean(logo2DataUrl))} من 2`
+                          : `Images: ${Number(Boolean(logoDataUrl)) + Number(Boolean(logo2DataUrl))} / 2`}
+                      </span>
                     </div>
 
-                    {/* Upload Image File */}
-                    <div>
-                      <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-2">
-                        {isArabic ? "إضافة صورة أو شعار للكارت" : "Add Photo or Logo to Card"}
-                      </label>
-                      <label className="flex flex-col items-center justify-center p-6 rounded-2xl border-2 border-dashed border-slate-300 dark:border-slate-800 hover:border-indigo-500 bg-slate-50/60 dark:bg-transparent hover:bg-slate-100/70 dark:hover:bg-slate-950 transition-all cursor-pointer">
-                        <Upload className="w-6 h-6 text-indigo-500 dark:text-indigo-400 mb-2" />
-                        <span className="text-xs font-bold text-slate-800 dark:text-slate-200">
-                          {logoDataUrl
-                            ? isArabic
-                              ? "تغيير الصورة"
-                              : "Change Image"
-                            : isArabic
-                              ? "انقر لاختيار ملف الصورة"
-                              : "Click to upload image"}
-                        </span>
-                        <span className="text-[11px] text-slate-500 dark:text-slate-400 font-medium mt-1">
-                          {isArabic
-                            ? "يدعم جميع صيغ الصور (PNG, JPG, WEBP, SVG) بجودة فائقة"
-                            : "Supports all image formats (PNG, JPG, WEBP, SVG)"}
-                        </span>
-                        <input
-                          type="file"
-                          accept="image/*"
-                          onChange={handleImageUpload}
-                          className="hidden"
-                        />
-                      </label>
-                    </div>
+                    {/* Upload Buttons when count < 2 */}
+                    {(!logoDataUrl || !logo2DataUrl) && (
+                      <div>
+                        <label className="flex flex-col items-center justify-center p-5 rounded-2xl border-2 border-dashed border-indigo-300 dark:border-indigo-800 hover:border-indigo-500 bg-slate-50/70 dark:bg-slate-950 hover:bg-indigo-50/40 dark:hover:bg-indigo-950/20 transition-all cursor-pointer">
+                          <Upload className="w-6 h-6 text-indigo-500 dark:text-indigo-400 mb-1.5" />
+                          <span className="text-xs font-bold text-slate-800 dark:text-slate-200">
+                            {!logoDataUrl
+                              ? (isArabic ? "انقر لرفع الصورة أو الشعار الأول" : "Click to upload first image/logo")
+                              : (isArabic ? "انقر لرفع صورة / شعار إضافي (2 من 2)" : "Click to upload second image/logo (2/2)")}
+                          </span>
+                          <input
+                            type="file"
+                            accept="image/*"
+                            onChange={(e) => handleImageUpload(e, !logoDataUrl ? "logo" : "logo2")}
+                            className="hidden"
+                          />
+                        </label>
+                      </div>
+                    )}
 
-                    {/* Image Controls */}
+                    {/* Slot 1 Controls */}
                     {logoDataUrl && (
                       <div className="space-y-4 p-4 rounded-2xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800">
                         <div className="flex items-center justify-between">
-                          <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400">
-                            {isArabic ? "✓ الصورة مفعلة على الكارت" : "✓ Image active on card"}
-                          </span>
-                          <button
-                            type="button"
-                            onClick={() => setLogoDataUrl(null)}
-                            className="text-xs text-rose-500 hover:text-rose-600 dark:text-rose-400 dark:hover:text-rose-300 flex items-center gap-1 cursor-pointer font-bold"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" /> {isArabic ? "حذف الصورة" : "Remove Image"}
-                          </button>
+                          <div className="flex items-center gap-2">
+                            <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                            <span className="text-xs font-bold text-slate-800 dark:text-slate-200">
+                              {isArabic ? "الصورة الأولى" : "Image 1"}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <label className="text-[11px] font-bold text-indigo-600 dark:text-indigo-400 hover:underline cursor-pointer">
+                              {isArabic ? "تغيير" : "Change"}
+                              <input
+                                type="file"
+                                accept="image/*"
+                                onChange={(e) => handleImageUpload(e, "logo")}
+                                className="hidden"
+                              />
+                            </label>
+                            <button
+                              type="button"
+                              onClick={() => deleteElement("logo")}
+                              className="text-xs text-rose-500 hover:text-rose-600 flex items-center gap-1 cursor-pointer font-bold"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" /> {isArabic ? "حذف" : "Remove"}
+                            </button>
+                          </div>
                         </div>
 
                         {/* Position */}
                         <div>
                           <div className="flex items-center justify-between mb-1.5">
                             <label className="block text-[11px] font-bold text-slate-600 dark:text-slate-400">
-                              {isArabic ? "موضع الصورة (أو اسحبها بحرية على الكارت)" : "Image Position (or drag freely)"}
+                              {isArabic ? "موضع الصورة الأولى (أو اسحبها بحرية على الكارت)" : "Position (or drag freely)"}
                             </label>
                             {!elementsVisibility.logo ? (
                               <button
@@ -3670,16 +4487,16 @@ export default function CustomCardPage({
                                 className="text-[11px] font-bold text-indigo-600 dark:text-indigo-400 flex items-center gap-1 cursor-pointer"
                               >
                                 <Plus className="w-3 h-3" />
-                                <span>{isArabic ? "إعادة إظهار" : "Restore"}</span>
+                                <span>{isArabic ? "إظهار" : "Show"}</span>
                               </button>
                             ) : (
                               <button
                                 type="button"
-                                onClick={() => deleteElement("logo")}
-                                className="text-[11px] font-bold text-rose-500 hover:text-rose-600 dark:text-rose-400 flex items-center gap-1 cursor-pointer"
+                                onClick={() => setElementsVisibility((p) => ({ ...p, logo: false }))}
+                                className="text-[11px] font-bold text-rose-500 hover:text-rose-600 flex items-center gap-1 cursor-pointer"
                               >
                                 <Trash2 className="w-3 h-3" />
-                                <span>{isArabic ? "إخفاء من الكارت" : "Hide"}</span>
+                                <span>{isArabic ? "إخفاء" : "Hide"}</span>
                               </button>
                             )}
                           </div>
@@ -3700,7 +4517,7 @@ export default function CustomCardPage({
                                     logo: { x: pos.x, y: pos.y },
                                   }));
                                 }}
-                                className={`py-2 px-1 text-center rounded-lg text-xs font-bold transition-all cursor-pointer ${logoPosition === pos.id
+                                className={`py-1.5 px-1 text-center rounded-lg text-xs font-bold transition-all cursor-pointer ${logoPosition === pos.id
                                   ? "bg-indigo-600 text-white shadow-sm"
                                   : "bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white border border-slate-200 dark:border-transparent"
                                   }`}
@@ -3713,21 +4530,11 @@ export default function CustomCardPage({
 
                         {/* Image Size */}
                         <div>
-                          <div className="flex items-center justify-between mb-2">
+                          <div className="flex items-center justify-between mb-1.5">
                             <label className="text-[11px] font-bold text-slate-600 dark:text-slate-400">
-                              {isArabic ? "حجم الصورة" : "Image Size"}
+                              {isArabic ? "حجم الصورة الأولى" : "Size"}
                             </label>
-                            <div className="flex items-center gap-1.5 bg-white dark:bg-slate-900 px-2 py-0.5 rounded-lg border border-slate-200 dark:border-slate-800">
-                              <input
-                                type="number"
-                                min={15}
-                                max={600}
-                                value={logoSize}
-                                onChange={(e) => setLogoSize(Math.max(15, Number(e.target.value) || 20))}
-                                className="w-12 bg-transparent text-xs font-bold text-indigo-600 dark:text-indigo-400 text-center outline-none"
-                              />
-                              <span className="text-[10px] text-slate-500">px</span>
-                            </div>
+                            <span className="text-[11px] font-bold text-indigo-600 dark:text-indigo-400">{logoSize}px</span>
                           </div>
                           <input
                             type="range"
@@ -3739,15 +4546,15 @@ export default function CustomCardPage({
                           />
                         </div>
 
-                        {/* Image Color Mode Filter */}
+                        {/* Filter */}
                         <div>
                           <label className="block text-[11px] font-bold text-slate-600 dark:text-slate-400 mb-1.5">
-                            {isArabic ? "تأثير لون الصورة" : "Image Color Effect"}
+                            {isArabic ? "تأثير اللون" : "Color Effect"}
                           </label>
                           <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
                             {[
                               { id: "none", label: isArabic ? "الأصلي" : "Original" },
-                              { id: "white", label: isArabic ? "أبيض ناصع" : "Pure White" },
+                              { id: "white", label: isArabic ? "أبيض ناصع" : "White" },
                               { id: "black", label: isArabic ? "أسود مطفي" : "Black" },
                               { id: "gold", label: isArabic ? "تأثير ذهبي" : "Golden" },
                             ].map((m) => (
@@ -3755,7 +4562,134 @@ export default function CustomCardPage({
                                 key={m.id}
                                 type="button"
                                 onClick={() => setLogoFilter(m.id)}
-                                className={`py-1.5 text-center rounded-lg text-[11px] font-bold transition-all cursor-pointer ${logoFilter === m.id
+                                className={`py-1 text-center rounded-lg text-[11px] font-bold transition-all cursor-pointer ${logoFilter === m.id
+                                  ? "bg-indigo-600 text-white shadow-sm"
+                                  : "bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white border border-slate-200 dark:border-transparent"
+                                  }`}
+                              >
+                                {m.label}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Slot 2 Controls */}
+                    {logo2DataUrl && (
+                      <div className="space-y-4 p-4 rounded-2xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <span className="w-2 h-2 rounded-full bg-purple-500" />
+                            <span className="text-xs font-bold text-slate-800 dark:text-slate-200">
+                              {isArabic ? "الصورة الثانية" : "Image 2"}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <label className="text-[11px] font-bold text-indigo-600 dark:text-indigo-400 hover:underline cursor-pointer">
+                              {isArabic ? "تغيير" : "Change"}
+                              <input
+                                type="file"
+                                accept="image/*"
+                                onChange={(e) => handleImageUpload(e, "logo2")}
+                                className="hidden"
+                              />
+                            </label>
+                            <button
+                              type="button"
+                              onClick={() => deleteElement("logo2")}
+                              className="text-xs text-rose-500 hover:text-rose-600 flex items-center gap-1 cursor-pointer font-bold"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" /> {isArabic ? "حذف" : "Remove"}
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* Position */}
+                        <div>
+                          <div className="flex items-center justify-between mb-1.5">
+                            <label className="block text-[11px] font-bold text-slate-600 dark:text-slate-400">
+                              {isArabic ? "موضع الصورة الثانية (أو اسحبها بحرية على الكارت)" : "Position (or drag freely)"}
+                            </label>
+                            {!elementsVisibility.logo2 ? (
+                              <button
+                                type="button"
+                                onClick={() => restoreElement("logo2")}
+                                className="text-[11px] font-bold text-indigo-600 dark:text-indigo-400 flex items-center gap-1 cursor-pointer"
+                              >
+                                <Plus className="w-3 h-3" />
+                                <span>{isArabic ? "إظهار" : "Show"}</span>
+                              </button>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => setElementsVisibility((p) => ({ ...p, logo2: false }))}
+                                className="text-[11px] font-bold text-rose-500 hover:text-rose-600 flex items-center gap-1 cursor-pointer"
+                              >
+                                <Trash2 className="w-3 h-3" />
+                                <span>{isArabic ? "إخفاء" : "Hide"}</span>
+                              </button>
+                            )}
+                          </div>
+                          <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
+                            {[
+                              { id: "top-left", label: isArabic ? "أعلى اليسار" : "Top Left", x: 16, y: 18 },
+                              { id: "top-right", label: isArabic ? "أعلى اليمين" : "Top Right", x: 84, y: 18 },
+                              { id: "center", label: isArabic ? "في المنتصف" : "Center", x: 50, y: 50 },
+                              { id: "bottom-left", label: isArabic ? "أسفل اليسار" : "Bottom Left", x: 16, y: 82 },
+                            ].map((pos) => (
+                              <button
+                                key={pos.id}
+                                type="button"
+                                onClick={() => {
+                                  setElementsPos((prev) => ({
+                                    ...prev,
+                                    logo2: { x: pos.x, y: pos.y },
+                                  }));
+                                }}
+                                className="py-1.5 px-1 text-center rounded-lg text-xs font-bold transition-all cursor-pointer bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white border border-slate-200 dark:border-transparent hover:border-indigo-400"
+                              >
+                                {pos.label}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+
+                        {/* Image Size */}
+                        <div>
+                          <div className="flex items-center justify-between mb-1.5">
+                            <label className="text-[11px] font-bold text-slate-600 dark:text-slate-400">
+                              {isArabic ? "حجم الصورة الثانية" : "Size"}
+                            </label>
+                            <span className="text-[11px] font-bold text-indigo-600 dark:text-indigo-400">{logo2Size}px</span>
+                          </div>
+                          <input
+                            type="range"
+                            min={20}
+                            max={250}
+                            value={Math.min(logo2Size, 250)}
+                            onChange={(e) => setLogo2Size(Number(e.target.value))}
+                            className="w-full accent-indigo-500 cursor-pointer"
+                          />
+                        </div>
+
+                        {/* Filter */}
+                        <div>
+                          <label className="block text-[11px] font-bold text-slate-600 dark:text-slate-400 mb-1.5">
+                            {isArabic ? "تأثير اللون" : "Color Effect"}
+                          </label>
+                          <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
+                            {[
+                              { id: "none", label: isArabic ? "الأصلي" : "Original" },
+                              { id: "white", label: isArabic ? "أبيض ناصع" : "White" },
+                              { id: "black", label: isArabic ? "أسود مطفي" : "Black" },
+                              { id: "gold", label: isArabic ? "تأثير ذهبي" : "Golden" },
+                            ].map((m) => (
+                              <button
+                                key={m.id}
+                                type="button"
+                                onClick={() => setLogo2Filter(m.id)}
+                                className={`py-1 text-center rounded-lg text-[11px] font-bold transition-all cursor-pointer ${logo2Filter === m.id
                                   ? "bg-indigo-600 text-white shadow-sm"
                                   : "bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white border border-slate-200 dark:border-transparent"
                                   }`}
@@ -3777,19 +4711,17 @@ export default function CustomCardPage({
                   {/* ── BACK SIDE CUSTOMIZATION SECTION ── */}
                   <div className="space-y-6">
                     <div className="flex items-center gap-2 pb-2 border-b border-slate-100 dark:border-slate-800">
-                      <QrCode className="w-4 h-4 text-indigo-500" />
                       <h3 className="text-sm font-black text-slate-800 dark:text-slate-100">
-                        {isArabic ? "إعدادات ظهر الكارت ورمز الـ QR" : "Card Back & QR Settings"}
+                        {isArabic ? "الوجه الخلفي للبطاقة" : "Card Back Face"}
                       </h3>
                     </div>
 
                     {/* QR Code Color & Settings */}
                     <div className="p-3 sm:p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 space-y-2.5">
                       <div className="flex items-center justify-between">
-                        <label className="text-xs font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
-                          <QrCode className="w-3.5 h-3.5 text-indigo-500" />
-                          <span>{isArabic ? "رمز الاستجابة السريعة (QR Code)" : "QR Code"}</span>
-                        </label>
+                        <span className="text-xs font-bold text-slate-800 dark:text-slate-200">
+                          QR Code
+                        </span>
                         <button
                           type="button"
                           onClick={() => setShowBackQr(!showBackQr)}
@@ -3814,10 +4746,6 @@ export default function CustomCardPage({
                         <div className="pt-2 border-t border-slate-200/60 dark:border-slate-800/60 space-y-2.5">
                           {/* Profile Preview Info Box */}
                           <div className="p-2.5 rounded-xl bg-indigo-50/70 dark:bg-indigo-950/40 border border-indigo-200/80 dark:border-indigo-800/60 text-[11px] space-y-1.5">
-                            <div className="flex items-center gap-1.5 font-bold text-indigo-900 dark:text-indigo-200">
-                              <Sparkles className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
-                              <span>{isArabic ? "معاينة رمز الـ QR (ملفك الشخصي)" : "QR Preview (Your Profile)"}</span>
-                            </div>
                             <p className="text-slate-600 dark:text-slate-300 leading-relaxed text-[10px]">
                               {isArabic
                                 ? "رمز الـ QR الحالي في المعاينة يوجّه لصفحة بروفايلك. عند إتمام ودفع الطلب، يتم إنشاء كارتك الفعلي في إدارة كروت Thenith الذكية وتوليد الكود والرابط الفعلي المخصص للطباعة بنفس الموضع واللون المحددين بدقة."
@@ -3838,7 +4766,6 @@ export default function CustomCardPage({
                                   className="w-4 h-4 rounded-full border border-slate-300 dark:border-slate-600 shadow-xs"
                                   style={{ backgroundColor: qrColor }}
                                 />
-                                <span className="text-[10px] font-mono font-bold text-slate-500">{qrColor}</span>
                               </div>
                             </div>
 
@@ -3858,7 +4785,7 @@ export default function CustomCardPage({
                                 <button
                                   key={c.hex}
                                   type="button"
-                                  onClick={() => setQrColor(c.hex)}
+                                  onClick={() => handleSetManualQrColor(c.hex)}
                                   title={isArabic ? c.labelAr : c.hex}
                                   className={`w-6 h-6 rounded-full transition-transform cursor-pointer relative ${qrColor.toLowerCase() === c.hex.toLowerCase()
                                     ? "scale-110 ring-2 ring-indigo-500 ring-offset-2 ring-offset-white dark:ring-offset-slate-900 shadow-md"
@@ -3885,7 +4812,7 @@ export default function CustomCardPage({
                                 <input
                                   type="color"
                                   value={qrColor}
-                                  onChange={(e) => setQrColor(e.target.value)}
+                                  onChange={(e) => handleSetManualQrColor(e.target.value)}
                                   className="opacity-0 w-0 h-0 pointer-events-none"
                                 />
                                 <Pipette className="w-3 h-3 text-white drop-shadow" />
@@ -3956,6 +4883,16 @@ export default function CustomCardPage({
                                 className="flex-1 accent-indigo-500 cursor-pointer h-1.5"
                               />
                             </div>
+                            <div className="space-y-1.5 pt-1">
+                              <span className="text-[11px] font-bold text-slate-600 dark:text-slate-400">
+                                {isArabic ? "نوع الخط:" : "Font:"}
+                              </span>
+                              <FontPickerSelect
+                                value={backTitleFont}
+                                onChange={setBackTitleFont}
+                                isArabic={isArabic}
+                              />
+                            </div>
                           </div>
                         </>
                       )}
@@ -4021,6 +4958,16 @@ export default function CustomCardPage({
                                 className="flex-1 accent-indigo-500 cursor-pointer h-1.5"
                               />
                             </div>
+                            <div className="space-y-1.5 pt-1">
+                              <span className="text-[11px] font-bold text-slate-600 dark:text-slate-400">
+                                {isArabic ? "نوع الخط:" : "Font:"}
+                              </span>
+                              <FontPickerSelect
+                                value={backSubtitleFont}
+                                onChange={setBackSubtitleFont}
+                                isArabic={isArabic}
+                              />
+                            </div>
                           </div>
                         </>
                       )}
@@ -4065,10 +5012,99 @@ export default function CustomCardPage({
                                 isArabic={isArabic}
                               />
                             </div>
+                            <div className="space-y-1.5 pt-1">
+                              <span className="text-[11px] font-bold text-slate-600 dark:text-slate-400">
+                                {isArabic ? "نوع الخط:" : "Font:"}
+                              </span>
+                              <FontPickerSelect
+                                value={item.font || backTitleFont || "Cairo"}
+                                onChange={(val) => handleUpdateBackCustomText(item.id, "font", val)}
+                                isArabic={isArabic}
+                              />
+                            </div>
                           </div>
                         ))}
                       </div>
                     )}
+
+                    {/* Master Back Text Color Selection (توحيد ألوان نصوص ظهر الكارت) */}
+                    <div className="p-3.5 sm:p-4 rounded-2xl bg-indigo-50/50 dark:bg-indigo-950/20 border border-indigo-200/80 dark:border-indigo-800/50 space-y-3">
+                      <div className="flex items-center justify-between gap-2">
+                        <label className="block text-xs font-bold text-slate-900 dark:text-white">
+                          {isArabic ? "توحيد ألوان نصوص ظهر الكارت" : "Unify Back Text Colors"}
+                        </label>
+
+                        {/* Option to include QR or not */}
+                        <label className="flex items-center gap-1.5 cursor-pointer select-none text-[11px] font-bold text-indigo-700 dark:text-indigo-300">
+                          <input
+                            type="checkbox"
+                            checked={syncBackQrColor}
+                            onChange={(e) => {
+                              const isChecked = e.target.checked;
+                              setSyncBackQrColor(isChecked);
+                              if (isChecked) {
+                                if (backTitleColor || textColor) {
+                                  setQrColor(backTitleColor || textColor);
+                                }
+                              } else {
+                                setQrColor(lastManualQrColorRef.current || "#000000");
+                              }
+                            }}
+                            className="w-3.5 h-3.5 accent-indigo-600 rounded cursor-pointer"
+                          />
+                          <span>{isArabic ? "تطبيق مع الـ QR" : "Include QR"}</span>
+                        </label>
+                      </div>
+
+                      <div className="w-full grid grid-cols-10 gap-1 sm:gap-2 p-2 sm:p-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800/80 place-items-center overflow-hidden">
+                        {TEXT_COLORS.map((color) => {
+                          const active = (backTitleColor || textColor || "#ffffff").toLowerCase() === color.value.toLowerCase();
+                          return (
+                            <button
+                              key={color.id}
+                              type="button"
+                              onClick={() => handleApplyBackTextColor(color.value)}
+                              title={isArabic ? `${color.nameAr} - اضغط لتوحيد ألوان نصوص ظهر الكارت` : `${color.nameEn} - Click to unify back texts`}
+                              className={`w-full max-w-[32px] aspect-square rounded-full transition-all cursor-pointer flex items-center justify-center ${active
+                                ? "ring-2 ring-indigo-500 ring-offset-1 ring-offset-white dark:ring-offset-slate-900 shadow-md z-10"
+                                : "hover:scale-105 opacity-85 hover:opacity-100"
+                                }`}
+                              style={{
+                                backgroundColor: color.value,
+                                border: color.border || "1px solid rgba(120,120,120,0.25)",
+                                boxShadow: color.glow ? `0 0 10px ${color.glow}` : undefined,
+                              }}
+                            >
+                              {active && (
+                                <Check
+                                  className={`w-3.5 h-3.5 drop-shadow ${color.value === "#ffffff" || color.value === "#e2e8f0" || color.value === "#38bdf8"
+                                    ? "text-slate-900 font-black"
+                                    : "text-white font-bold"
+                                    }`}
+                                />
+                              )}
+                            </button>
+                          );
+                        })}
+
+                        {/* Custom Color Circle Swatch */}
+                        <label
+                          title={isArabic ? "اختيار لون مخصص وتوحيده لكافة نصوص ظهر الكارت" : "Pick custom color for all back texts"}
+                          className="relative w-full max-w-[32px] aspect-square rounded-full border-2 border-dashed border-slate-300 dark:border-slate-600 hover:border-indigo-500 flex items-center justify-center cursor-pointer bg-slate-50 dark:bg-slate-800 transition-all hover:scale-105"
+                        >
+                          <span
+                            className="w-4 h-4 rounded-full border border-slate-300 dark:border-slate-600 shadow-inner"
+                            style={{ backgroundColor: backTitleColor || textColor || "#ffffff" }}
+                          />
+                          <input
+                            type="color"
+                            value={backTitleColor || textColor || "#ffffff"}
+                            onChange={(e) => handleApplyBackTextColor(e.target.value)}
+                            className="opacity-0 absolute inset-0 w-full h-full cursor-pointer"
+                          />
+                        </label>
+                      </div>
+                    </div>
 
                     {/* Add New Custom Text on Back Button */}
                     <div>
@@ -4080,6 +5116,295 @@ export default function CustomCardPage({
                         <Plus className="w-4 h-4" />
                         <span>{isArabic ? "إضافة نص جديد على ظهر الكارت" : "Add New Text to Back Face"}</span>
                       </button>
+                    </div>
+
+                    {/* ── BACK FACE PHOTOS & LOGOS (MAX 2) ── */}
+                    <div className="space-y-4 pt-5 border-t border-slate-200 dark:border-slate-800">
+                      <div className="flex items-center justify-between pb-1">
+                        <h4 className="text-sm font-black text-slate-800 dark:text-slate-100 flex items-center gap-2">
+                          <ImageIcon className="w-4 h-4 text-indigo-500" />
+                          <span>{isArabic ? "رفع الصور والشعار لظهر الكارت" : "Back Face Photos & Logos"}</span>
+                        </h4>
+                        <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 border border-indigo-200/60 dark:border-indigo-800/60">
+                          {isArabic
+                            ? `الصور: ${Number(Boolean(backLogoDataUrl)) + Number(Boolean(backLogo2DataUrl))} من 2`
+                            : `Images: ${Number(Boolean(backLogoDataUrl)) + Number(Boolean(backLogo2DataUrl))} / 2`}
+                        </span>
+                      </div>
+
+                      {/* Upload button for back face if slots available */}
+                      {(!backLogoDataUrl || !backLogo2DataUrl) && (
+                        <div>
+                          <label className="flex flex-col items-center justify-center p-5 rounded-2xl border-2 border-dashed border-indigo-300 dark:border-indigo-800 hover:border-indigo-500 bg-slate-50/70 dark:bg-slate-950 hover:bg-indigo-50/40 dark:hover:bg-indigo-950/20 transition-all cursor-pointer">
+                            <Upload className="w-6 h-6 text-indigo-500 dark:text-indigo-400 mb-1.5" />
+                            <span className="text-xs font-bold text-slate-800 dark:text-slate-200">
+                              {!backLogoDataUrl
+                                ? (isArabic ? "انقر لرفع صورة أو شعار على ظهر الكارت" : "Click to upload image on back face")
+                                : (isArabic ? "انقر لرفع صورة ثانية على ظهر الكارت (2 من 2)" : "Upload second back image (2/2)")}
+                            </span>
+                            <input
+                              type="file"
+                              accept="image/*"
+                              onChange={(e) => handleImageUpload(e, !backLogoDataUrl ? "backLogo" : "backLogo2")}
+                              className="hidden"
+                            />
+                          </label>
+                        </div>
+                      )}
+
+                      {/* Back Slot 1 Controls */}
+                      {backLogoDataUrl && (
+                        <div className="space-y-4 p-4 rounded-2xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                              <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                              <span className="text-xs font-bold text-slate-800 dark:text-slate-200">
+                                {isArabic ? "صورة الظهر الأولى" : "Back Image 1"}
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <label className="text-[11px] font-bold text-indigo-600 dark:text-indigo-400 hover:underline cursor-pointer">
+                                {isArabic ? "تغيير" : "Change"}
+                                <input
+                                  type="file"
+                                  accept="image/*"
+                                  onChange={(e) => handleImageUpload(e, "backLogo")}
+                                  className="hidden"
+                                />
+                              </label>
+                              <button
+                                type="button"
+                                onClick={() => deleteElement("backLogo")}
+                                className="text-xs text-rose-500 hover:text-rose-600 flex items-center gap-1 cursor-pointer font-bold"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" /> {isArabic ? "حذف" : "Remove"}
+                              </button>
+                            </div>
+                          </div>
+
+                          {/* Position */}
+                          <div>
+                            <div className="flex items-center justify-between mb-1.5">
+                              <label className="block text-[11px] font-bold text-slate-600 dark:text-slate-400">
+                                {isArabic ? "الموضع (أو اسحبها بحرية على ظهر الكارت)" : "Position (or drag freely)"}
+                              </label>
+                              {!elementsVisibility.backLogo ? (
+                                <button
+                                  type="button"
+                                  onClick={() => restoreElement("backLogo")}
+                                  className="text-[11px] font-bold text-indigo-600 dark:text-indigo-400 flex items-center gap-1 cursor-pointer"
+                                >
+                                  <Plus className="w-3 h-3" />
+                                  <span>{isArabic ? "إظهار" : "Show"}</span>
+                                </button>
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={() => setElementsVisibility((p) => ({ ...p, backLogo: false }))}
+                                  className="text-[11px] font-bold text-rose-500 hover:text-rose-600 flex items-center gap-1 cursor-pointer"
+                                >
+                                  <Trash2 className="w-3 h-3" />
+                                  <span>{isArabic ? "إخفاء" : "Hide"}</span>
+                                </button>
+                              )}
+                            </div>
+                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
+                              {[
+                                { id: "left", label: isArabic ? "يسار الـ QR" : "Left of QR", x: 28, y: 50 },
+                                { id: "top-left", label: isArabic ? "أعلى الظهر" : "Top Left", x: 28, y: 22 },
+                                { id: "bottom-left", label: isArabic ? "أسفل الظهر" : "Bottom Left", x: 28, y: 78 },
+                                { id: "center", label: isArabic ? "في المنتصف" : "Center", x: 50, y: 50 },
+                              ].map((pos) => (
+                                <button
+                                  key={pos.id}
+                                  type="button"
+                                  onClick={() => {
+                                    setElementsPos((prev) => ({
+                                      ...prev,
+                                      backLogo: { x: pos.x, y: pos.y },
+                                    }));
+                                  }}
+                                  className="py-1.5 px-1 text-center rounded-lg text-xs font-bold transition-all cursor-pointer bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white border border-slate-200 dark:border-transparent hover:border-indigo-400"
+                                >
+                                  {pos.label}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+
+                          {/* Size */}
+                          <div>
+                            <div className="flex items-center justify-between mb-1.5">
+                              <label className="text-[11px] font-bold text-slate-600 dark:text-slate-400">
+                                {isArabic ? "حجم الصورة" : "Size"}
+                              </label>
+                              <span className="text-[11px] font-bold text-indigo-600 dark:text-indigo-400">{backLogoSize}px</span>
+                            </div>
+                            <input
+                              type="range"
+                              min={20}
+                              max={250}
+                              value={Math.min(backLogoSize, 250)}
+                              onChange={(e) => setBackLogoSize(Number(e.target.value))}
+                              className="w-full accent-indigo-500 cursor-pointer"
+                            />
+                          </div>
+
+                          {/* Filter */}
+                          <div>
+                            <label className="block text-[11px] font-bold text-slate-600 dark:text-slate-400 mb-1.5">
+                              {isArabic ? "تأثير اللون" : "Color Effect"}
+                            </label>
+                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
+                              {[
+                                { id: "none", label: isArabic ? "الأصلي" : "Original" },
+                                { id: "white", label: isArabic ? "أبيض ناصع" : "White" },
+                                { id: "black", label: isArabic ? "أسود مطفي" : "Black" },
+                                { id: "gold", label: isArabic ? "تأثير ذهبي" : "Golden" },
+                              ].map((m) => (
+                                <button
+                                  key={m.id}
+                                  type="button"
+                                  onClick={() => setBackLogoFilter(m.id)}
+                                  className={`py-1 text-center rounded-lg text-[11px] font-bold transition-all cursor-pointer ${backLogoFilter === m.id
+                                    ? "bg-indigo-600 text-white shadow-sm"
+                                    : "bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white border border-slate-200 dark:border-transparent"
+                                    }`}
+                                >
+                                  {m.label}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Back Slot 2 Controls */}
+                      {backLogo2DataUrl && (
+                        <div className="space-y-4 p-4 rounded-2xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                              <span className="w-2 h-2 rounded-full bg-purple-500" />
+                              <span className="text-xs font-bold text-slate-800 dark:text-slate-200">
+                                {isArabic ? "صورة الظهر الثانية" : "Back Image 2"}
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <label className="text-[11px] font-bold text-indigo-600 dark:text-indigo-400 hover:underline cursor-pointer">
+                                {isArabic ? "تغيير" : "Change"}
+                                <input
+                                  type="file"
+                                  accept="image/*"
+                                  onChange={(e) => handleImageUpload(e, "backLogo2")}
+                                  className="hidden"
+                                />
+                              </label>
+                              <button
+                                type="button"
+                                onClick={() => deleteElement("backLogo2")}
+                                className="text-xs text-rose-500 hover:text-rose-600 flex items-center gap-1 cursor-pointer font-bold"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" /> {isArabic ? "حذف" : "Remove"}
+                              </button>
+                            </div>
+                          </div>
+
+                          {/* Position */}
+                          <div>
+                            <div className="flex items-center justify-between mb-1.5">
+                              <label className="block text-[11px] font-bold text-slate-600 dark:text-slate-400">
+                                {isArabic ? "الموضع (أو اسحبها بحرية على ظهر الكارت)" : "Position (or drag freely)"}
+                              </label>
+                              {!elementsVisibility.backLogo2 ? (
+                                <button
+                                  type="button"
+                                  onClick={() => restoreElement("backLogo2")}
+                                  className="text-[11px] font-bold text-indigo-600 dark:text-indigo-400 flex items-center gap-1 cursor-pointer"
+                                >
+                                  <Plus className="w-3 h-3" />
+                                  <span>{isArabic ? "إظهار" : "Show"}</span>
+                                </button>
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={() => setElementsVisibility((p) => ({ ...p, backLogo2: false }))}
+                                  className="text-[11px] font-bold text-rose-500 hover:text-rose-600 flex items-center gap-1 cursor-pointer"
+                                >
+                                  <Trash2 className="w-3 h-3" />
+                                  <span>{isArabic ? "إخفاء" : "Hide"}</span>
+                                </button>
+                              )}
+                            </div>
+                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
+                              {[
+                                { id: "bottom", label: isArabic ? "أسفل الظهر" : "Bottom", x: 28, y: 78 },
+                                { id: "top", label: isArabic ? "أعلى الظهر" : "Top", x: 28, y: 22 },
+                                { id: "center", label: isArabic ? "في المنتصف" : "Center", x: 50, y: 50 },
+                                { id: "right", label: isArabic ? "يمين الـ QR" : "Right", x: 80, y: 80 },
+                              ].map((pos) => (
+                                <button
+                                  key={pos.id}
+                                  type="button"
+                                  onClick={() => {
+                                    setElementsPos((prev) => ({
+                                      ...prev,
+                                      backLogo2: { x: pos.x, y: pos.y },
+                                    }));
+                                  }}
+                                  className="py-1.5 px-1 text-center rounded-lg text-xs font-bold transition-all cursor-pointer bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white border border-slate-200 dark:border-transparent hover:border-indigo-400"
+                                >
+                                  {pos.label}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+
+                          {/* Size */}
+                          <div>
+                            <div className="flex items-center justify-between mb-1.5">
+                              <label className="text-[11px] font-bold text-slate-600 dark:text-slate-400">
+                                {isArabic ? "حجم الصورة" : "Size"}
+                              </label>
+                              <span className="text-[11px] font-bold text-indigo-600 dark:text-indigo-400">{backLogo2Size}px</span>
+                            </div>
+                            <input
+                              type="range"
+                              min={20}
+                              max={250}
+                              value={Math.min(backLogo2Size, 250)}
+                              onChange={(e) => setBackLogo2Size(Number(e.target.value))}
+                              className="w-full accent-indigo-500 cursor-pointer"
+                            />
+                          </div>
+
+                          {/* Filter */}
+                          <div>
+                            <label className="block text-[11px] font-bold text-slate-600 dark:text-slate-400 mb-1.5">
+                              {isArabic ? "تأثير اللون" : "Color Effect"}
+                            </label>
+                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
+                              {[
+                                { id: "none", label: isArabic ? "الأصلي" : "Original" },
+                                { id: "white", label: isArabic ? "أبيض ناصع" : "White" },
+                                { id: "black", label: isArabic ? "أسود مطفي" : "Black" },
+                                { id: "gold", label: isArabic ? "تأثير ذهبي" : "Golden" },
+                              ].map((m) => (
+                                <button
+                                  key={m.id}
+                                  type="button"
+                                  onClick={() => setBackLogo2Filter(m.id)}
+                                  className={`py-1 text-center rounded-lg text-[11px] font-bold transition-all cursor-pointer ${backLogo2Filter === m.id
+                                    ? "bg-indigo-600 text-white shadow-sm"
+                                    : "bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white border border-slate-200 dark:border-transparent"
+                                    }`}
+                                >
+                                  {m.label}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        </div>
+                      )}
                     </div>
 
                     {/* 3. ICONS ON BACK FACE */}

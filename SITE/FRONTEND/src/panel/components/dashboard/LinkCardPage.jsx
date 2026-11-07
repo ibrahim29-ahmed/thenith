@@ -45,7 +45,7 @@ const STATUS = {
 
 function formatDate(dateStr, isArabic) {
   if (!dateStr) return "";
-  return new Date(dateStr).toLocaleDateString(isArabic ? "ar-EG" : "en-US", {
+  return new Date(dateStr).toLocaleDateString(isArabic ? "ar-EG-u-nu-latn" : "en-US", {
     day: "numeric", month: "short", year: "numeric",
   });
 }

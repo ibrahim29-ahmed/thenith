@@ -11,7 +11,26 @@ const productSchema = new mongoose.Schema(
       en: { type: String, default: "", maxlength: 2000 },
     },
     images: {
-      type: [String],
+      type: [mongoose.Schema.Types.Mixed],
+      default: [],
+    },
+    panelImage: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+    mainImage: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+    iconImage: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+    colors: {
+      type: [mongoose.Schema.Types.Mixed],
       default: [],
     },
     price: {
@@ -45,6 +64,11 @@ const productSchema = new mongoose.Schema(
     isCustomizable: {
       type: Boolean,
       default: false,
+    },
+    nfcChipType: {
+      type: String,
+      default: "NTAG215",
+      trim: true,
     },
   },
   { timestamps: true },

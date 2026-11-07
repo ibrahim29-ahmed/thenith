@@ -8,6 +8,7 @@ import {
   Clock,
   User as UserIcon,
   MessageSquare,
+  ShieldCheck,
 } from "lucide-react";
 import { adminFetch } from "../services/adminApi.js";
 import { io } from "socket.io-client";
@@ -21,14 +22,29 @@ export default function SupportDesk() {
   const [loading, setLoading] = useState(true);
   const [socket, setSocket] = useState(null);
   const messagesEndRef = useRef(null);
+  const chatContainerRef = useRef(null);
   const activeTicketRef = useRef(null);
   const [unreadTabCount, setUnreadTabCount] = useState(0);
 
+  const scrollToBottom = (smooth = false) => {
+    if (chatContainerRef.current) {
+      chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
+    }
+    if (messagesEndRef.current) {
+      messagesEndRef.current.scrollIntoView({
+        behavior: smooth ? "smooth" : "auto",
+        block: "end",
+      });
+    }
+  };
+
   useEffect(() => {
+    const siteName = localStorage.getItem("admin_site_name") || "Thenith";
+    const titleBase = `مكتب الدعم الفني | ${siteName}`;
     if (unreadTabCount > 0) {
-      document.title = `(${unreadTabCount}) Thenith | Admin`;
+      document.title = `(${unreadTabCount}) ${titleBase}`;
     } else {
-      document.title = "Thenith | Admin";
+      document.title = titleBase;
     }
   }, [unreadTabCount]);
 
@@ -154,8 +170,12 @@ export default function SupportDesk() {
     });
 
     loadTickets();
+    const ticketsInterval = setInterval(loadTickets, 3000);
 
-    return () => newSocket.close();
+    return () => {
+      clearInterval(ticketsInterval);
+      newSocket.close();
+    };
   }, []);
 
   // Update messages if active ticket changes, but do it carefully to avoid stale closures
@@ -166,6 +186,7 @@ export default function SupportDesk() {
 
     const joinRoom = () => {
       socket?.emit("joinTicket", activeTicket._id);
+      socket?.emit("joinCustomerService", activeTicket._id);
     };
 
     joinRoom();
@@ -176,9 +197,41 @@ export default function SupportDesk() {
     };
   }, [activeTicket, socket]);
 
+  // Gentle background sync fallback for active chat
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+    if (!activeTicket?._id) return undefined;
+    const interval = setInterval(() => {
+      adminFetch(`/admin/customerServices/${activeTicket._id}/messages`)
+        .then((data) => {
+          if (Array.isArray(data)) {
+            setMessages((prev) => {
+              const missing = data.filter((m) => !prev.some((p) => p._id === m._id));
+              if (missing.length > 0) {
+                return [...prev, ...missing];
+              }
+              return prev;
+            });
+          }
+        })
+        .catch(() => {});
+    }, 3500);
+
+    return () => clearInterval(interval);
+  }, [activeTicket?._id]);
+
+  useEffect(() => {
+    if (activeTicket && messages.length > 0) {
+      scrollToBottom(false);
+      const raf = requestAnimationFrame(() => scrollToBottom(false));
+      const t1 = setTimeout(() => scrollToBottom(false), 50);
+      const t2 = setTimeout(() => scrollToBottom(false), 150);
+      return () => {
+        cancelAnimationFrame(raf);
+        clearTimeout(t1);
+        clearTimeout(t2);
+      };
+    }
+  }, [messages, activeTicket?._id]);
 
   const loadTickets = async () => {
     try {
@@ -340,7 +393,7 @@ export default function SupportDesk() {
                   </div>
                   <div className="text-[10px] text-slate-400 font-medium ">
                     {new Date(ticket.lastMessageAt).toLocaleTimeString(
-                      "ar-EG",
+                      "ar-EG-u-nu-latn",
                       { hour: "2-digit", minute: "2-digit" },
                     )}
                   </div>
@@ -404,6 +457,7 @@ export default function SupportDesk() {
             </div>
 
             <div
+              ref={chatContainerRef}
               className="flex-1 overflow-y-auto p-6 space-y-4 bg-slate-50/30"
               style={{
                 backgroundImage:
@@ -429,21 +483,37 @@ export default function SupportDesk() {
                 return (
                   <div
                     key={msg._id}
-                    className={`flex ${isAdmin ? "justify-end" : "justify-start"}`}
+                    className={`flex ${isAdmin ? "justify-end" : "justify-start"} mb-3`}
                   >
-                    <div
-                      className={`max-w-[70%] p-3 rounded-2xl ${isAdmin ? "bg-indigo-600 text-white rounded-ss-none" : "bg-white border border-slate-200 text-slate-800 rounded-se-none shadow-sm"}`}
-                    >
-                      <p className="text-sm leading-relaxed whitespace-pre-wrap">
-                        {msg.content}
-                      </p>
+                    <div className={`max-w-[70%] flex flex-col ${isAdmin ? "items-end" : "items-start"}`}>
+                      {/* Message Bubble */}
                       <div
-                        className={`text-[10px] mt-1.5 text-end font-medium ${isAdmin ? "text-indigo-200" : "text-slate-400"}`}
+                        className={`p-3.5 rounded-2xl ${
+                          isAdmin
+                            ? "bg-indigo-600 text-white rounded-ss-none shadow-sm"
+                            : "bg-white border border-slate-200 text-slate-800 rounded-se-none shadow-sm"
+                        }`}
                       >
-                        {new Date(msg.createdAt).toLocaleTimeString("ar-EG", {
-                          hour: "2-digit",
-                          minute: "2-digit",
-                        })}
+                        <p className="text-sm leading-relaxed whitespace-pre-wrap">
+                          {msg.content}
+                        </p>
+                        <div
+                          className={`text-[10px] mt-1.5 text-end font-medium ${
+                            isAdmin ? "text-indigo-200" : "text-slate-400"
+                          }`}
+                        >
+                          {new Date(msg.createdAt).toLocaleTimeString("ar-EG-u-nu-latn", {
+                            hour: "2-digit",
+                            minute: "2-digit",
+                          })}
+                        </div>
+                      </div>
+
+                      {/* Outside Bubble: Sender Name */}
+                      <div className="text-[10px] mt-1 px-1 font-medium text-slate-500 select-none">
+                        {isAdmin
+                          ? (msg.senderName || (msg.senderId ? `@${msg.senderId}` : "مشرف الدعم"))
+                          : (msg.senderName || activeTicket.name || "العميل")}
                       </div>
                     </div>
                   </div>

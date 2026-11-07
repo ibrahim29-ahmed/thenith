@@ -11,8 +11,8 @@ const nfcSecuritySchema = new mongoose.Schema(
     },
     nfcChipType: {
       type: String,
-      enum: ["NTAG213", "NTAG215", "NTAG216", "NTAG424_DNA", "GENERIC_ISO14443A"],
       default: "NTAG215",
+      trim: true,
       index: true,
     },
     nfcProtectionStatus: {

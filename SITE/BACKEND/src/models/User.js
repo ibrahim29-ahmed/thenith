@@ -45,7 +45,58 @@ const userSchema = new mongoose.Schema(
     role: { type: String, enum: ["user", "admin"], default: "user" },
     isActive: { type: Boolean, default: true, index: true },
     isEmailVerified: { type: Boolean, default: false },
-    referrer: { type: String, default: "مباشر" }, // Tracks source (google, facebook, etc.)
+    paymentPlusActive: { type: Boolean, default: false },
+    savedCard: {
+      cardToken: { type: String, default: null },
+      cardTokenUniqueId: { type: String, default: null },
+      cardBrand: { type: String, default: null },
+      customerCard: { type: String, default: null },
+      savedAt: { type: Date, default: null },
+    },
+    referrer: { type: String, default: "Direct" }, // Tracks source (google, facebook, direct, etc.)
+    referralCode: {
+      type: String,
+      unique: true,
+      sparse: true,
+      uppercase: true,
+      trim: true,
+      index: true,
+    },
+    referredBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      default: null,
+      index: true,
+    },
+    referralStats: {
+      lifetimeCount: { type: Number, default: 0 },
+      currentMonthCount: { type: Number, default: 0 },
+      currentMonthKey: { type: String, default: null },
+      currentTierPercent: { type: Number, default: 0 },
+      milestoneReached: { type: Boolean, default: false },
+      milestoneReachedAt: { type: Date, default: null },
+    },
+    paymentMethods: {
+      type: [
+        {
+          id: { type: String, required: true },
+          name: { type: String, required: true },
+          provider: { type: String, default: "instapay" },
+          link: { type: String, default: "" },
+          walletNumber: { type: String, default: "" },
+          accountName: { type: String, default: "" },
+          customSlug: { type: String, default: "" },
+          customLink: { type: String, default: "" },
+          isActive: { type: Boolean, default: false },
+          createdAt: { type: Date, default: Date.now },
+        },
+      ],
+      default: [],
+    },
+    activePaymentMethodId: {
+      type: String,
+      default: null,
+    },
   },
   { timestamps: true },
 );

@@ -11,7 +11,6 @@ import {
   saveAccessToken,
   clearAccessToken,
 } from "../panel/services/authApi.js";
-import { identifyUser, setClarityTag } from "../services/clarity.js";
 
 const AuthContext = createContext(null);
 
@@ -22,13 +21,6 @@ export function AuthProvider({ children }) {
   const didInit = useRef(false);
 
   useEffect(() => {
-    if (user?._id || user?.id) {
-      identifyUser(user._id || user.id, user.name || user.email);
-      if (user.role) setClarityTag("role", user.role);
-    }
-  }, [user]);
-
-  useEffect(() => {
     if (didInit.current) return;
     didInit.current = true;
 
@@ -36,7 +28,10 @@ export function AuthProvider({ children }) {
       .then((session) => {
         const authenticated = Boolean(session?.authenticated);
         setIsAuthenticated(authenticated);
-        setUser(session?.user ?? null);
+        const userData = session?.user
+          ? { ...session.user, subscription: session.subscription }
+          : null;
+        setUser(userData);
       })
       .catch(() => {
         setIsAuthenticated(false);
@@ -68,7 +63,10 @@ export function AuthProvider({ children }) {
       const session = await restoreSessionApi();
       const authenticated = Boolean(session?.authenticated);
       setIsAuthenticated(authenticated);
-      setUser(session?.user ?? null);
+      const userData = session?.user
+        ? { ...session.user, subscription: session.subscription }
+        : null;
+      setUser(userData);
       return session;
     } catch {
       setIsAuthenticated(false);

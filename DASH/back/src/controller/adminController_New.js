@@ -132,16 +132,23 @@ const getStats = async (req, res, next) => {
     const referralStats = await User.aggregate([
       {
         $group: {
-          _id: { $ifNull: ["$referrer", "مباشر"] },
+          _id: { $ifNull: ["$referrer", "Direct"] },
           count: { $sum: 1 },
         },
       },
       { $sort: { count: -1 } },
     ]);
-    const referrers = referralStats.map((r) => ({
-      name: r._id,
-      count: r.count,
-    }));
+    const referrers = referralStats.map((r) => {
+      let name = r._id;
+      if (!name || name === "مباشر" || name === "مباشرة") name = "Direct";
+      else if (typeof name === "string" && name.startsWith("إحالة")) {
+        name = name.replace("إحالة", "Referral");
+      }
+      return {
+        name,
+        count: r.count,
+      };
+    });
 
     res.json({
       totalUsers,

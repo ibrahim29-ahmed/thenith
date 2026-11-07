@@ -1,7 +1,7 @@
 import { useGlobalLanguage } from "../../context/GlobalLanguageContext.jsx";
 import React, { useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { ArrowRight, CheckCircle, CreditCard, Truck, Phone, Building2, AlertCircle, X, ArrowLeft } from "lucide-react";
+import { ArrowRight, CheckCircle, CreditCard, Truck, Phone, Building2, AlertCircle, X, ArrowLeft, Loader2 } from "lucide-react";
 import { useCart } from "../../context/CartContext";
 import GlobalLogo from "../../components/GlobalLogo.jsx";
 import {
@@ -35,11 +35,29 @@ export default function CheckoutPage() {
   const [appliedCoupon, setAppliedCoupon] = useState(null);
   const [address, setAddress] = useState("");
   const [paymentMethod, setPaymentMethod] = useState("online");
+  const [codEnabled, setCodEnabled] = useState(true);
   const [methods, setMethods] = useState([]);
   const [selectedMethod, setSelectedMethod] = useState(null);
   const [walletNumber, setWalletNumber] = useState("");
   const [pendingPayment, setPendingPayment] = useState(null);
   const [cancellingPending, setCancellingPending] = useState(false);
+  const [pageLoading, setPageLoading] = useState(true);
+  const [cardPayment, setCardPayment] = useState(null);
+  const [iframeLoading, setIframeLoading] = useState(true);
+  const cardIframeRef = React.useRef(null);
+
+  const isCardMethod = (m) => {
+    if (!m) return false;
+    if (m.payment_method_id === 2) return true;
+    const name = `${m.name_en || ""} ${m.name_ar || ""}`.toLowerCase();
+    return (
+      name.includes("card") ||
+      name.includes("visa") ||
+      name.includes("mastercard") ||
+      name.includes("بطاق") ||
+      name.includes("فيزا")
+    );
+  };
 
   const fetchPending = async () => {
     if (!isAuthenticated) return;
@@ -90,10 +108,6 @@ export default function CheckoutPage() {
     } catch (err) {}
   };
 
-  useEffect(() => {
-    fetchPending();
-  }, [isAuthenticated]);
-
   const handleCancelPending = async () => {
     if (!pendingPayment?.intentKey) return;
     const confirmCancel = window.confirm(
@@ -125,20 +139,6 @@ export default function CheckoutPage() {
     }
   };
 
-  useEffect(() => {
-    let mounted = true;
-    api.payment.getMethods().then(res => {
-      if (mounted && res.methods) {
-        setMethods(res.methods);
-        if (res.methods.length > 0) {
-          const wallet = res.methods.find(m => m.payment_method_id === 4 || m.name_en?.toLowerCase().includes("wallet"));
-          setSelectedMethod(wallet || res.methods[0]);
-        }
-      }
-    }).catch(() => {});
-    return () => { mounted = false; };
-  }, []);
-
   const isWalletMethod = (m) => m?.payment_method_id === 4 || m?.name_en?.toLowerCase().includes("wallet");
   const isWalletValid = /^01[0125][0-9]{8}$/.test(walletNumber);
 
@@ -152,33 +152,76 @@ export default function CheckoutPage() {
     }
   }, [isAuthenticated, isInitializing, navigate]);
 
-  React.useEffect(() => {
-    if (user) {
-      if (!phone) setPhone(user.phone || "");
-      if (!address) setAddress(user.address || "");
-    }
-  }, [user]);
-
+  // Load all initial data (methods, shipping rates, pending payment, user prefill)
   React.useEffect(() => {
     let mounted = true;
-    getShippingRates().then((rates) => {
-      if (mounted && rates.length > 0) {
-        setShippingRates(rates);
-        if (user && user.city) {
-          const matchedRate = rates.find(
-            (r) => r.governorate === user.city || r.governorateAr === user.city,
+
+    const loadAllCheckoutData = async () => {
+      try {
+        const [methodsRes, ratesRes] = await Promise.all([
+          api.payment.getMethods().catch(() => ({ methods: [] })),
+          getShippingRates().catch(() => []),
+        ]);
+
+        if (!mounted) return;
+
+        if (methodsRes?.methods && methodsRes.methods.length > 0) {
+          setMethods(methodsRes.methods);
+          const wallet = methodsRes.methods.find(
+            (m) => m.payment_method_id === 4 || m.name_en?.toLowerCase().includes("wallet")
           );
-          if (matchedRate) {
-            setSelectedGovernorate(matchedRate._id);
-            setShippingCost(matchedRate.cost);
+          setSelectedMethod(wallet || methodsRes.methods[0]);
+        }
+
+        if (typeof methodsRes?.cod_enabled === "boolean") {
+          setCodEnabled(methodsRes.cod_enabled);
+          if (!methodsRes.cod_enabled) {
+            setPaymentMethod("online");
           }
         }
+
+        const rates = Array.isArray(ratesRes) ? ratesRes : [];
+        setShippingRates(rates);
+
+        if (user) {
+          if (user.phone) setPhone((prev) => prev || user.phone);
+          if (user.address) setAddress((prev) => prev || user.address);
+          if (user.city && rates.length > 0) {
+            const matchedRate = rates.find(
+              (r) => r.governorate === user.city || r.governorateAr === user.city
+            );
+            if (matchedRate) {
+              setSelectedGovernorate(matchedRate._id);
+              setShippingCost(matchedRate.cost);
+            }
+          }
+        }
+
+        if (isAuthenticated) {
+          await fetchPending().catch(() => {});
+        }
+      } catch (err) {
+        console.error("Error loading checkout data:", err);
+      } finally {
+        if (mounted) {
+          setPageLoading(false);
+        }
       }
-    });
+    };
+
+    loadAllCheckoutData();
+
     return () => {
       mounted = false;
     };
-  }, [user]);
+  }, [isAuthenticated, user]);
+
+  React.useEffect(() => {
+    if (user && !pageLoading) {
+      if (!phone && user.phone) setPhone(user.phone);
+      if (!address && user.address) setAddress(user.address);
+    }
+  }, [user, pageLoading]);
 
   const handleGovernorateChange = (e) => {
     const govId = e.target.value;
@@ -193,6 +236,22 @@ export default function CheckoutPage() {
       : Math.min(appliedCoupon.value, totalPrice)
     : 0;
   const finalTotal = totalPrice + shippingCost - discount;
+
+  // Polling removed: Frontend does not poll. It relies entirely on Fawaterak's redirect/webhook flow.
+
+  // Auto-scroll when card payment iframe appears
+  useEffect(() => {
+    if (cardPayment) {
+      setIframeLoading(true);
+      const timer = setTimeout(() => {
+        cardIframeRef.current?.scrollIntoView({
+          behavior: "smooth",
+          block: "start",
+        });
+      }, 200);
+      return () => clearTimeout(timer);
+    }
+  }, [cardPayment]);
 
   const handleApplyCoupon = async () => {
     if (!couponCode.trim()) return;
@@ -246,10 +305,15 @@ export default function CheckoutPage() {
       : "";
 
     try {
+      const effectivePaymentMethod = finalTotal <= 0 ? "free" : paymentMethod;
       const result = await createOrder({
         items: cart.map((item) => ({
           productId: item.id,
           quantity: item.quantity,
+          selectedImage: item.selectedImage || item.image || "",
+          selectedImageId: item.selectedImageId || "",
+          image: item.selectedImage || item.image || "",
+          color: item.color || null,
           customDesign: item.customDesign || null,
           cartItemId: item.cartItemId || item.id,
         })),
@@ -260,7 +324,7 @@ export default function CheckoutPage() {
           address,
           city: cityName,
         },
-        paymentMethod,
+        paymentMethod: effectivePaymentMethod,
         couponCode: appliedCoupon?.code || null,
       });
 
@@ -268,35 +332,53 @@ export default function CheckoutPage() {
         try {
           localStorage.removeItem("thenith_custom_card_studio_state_v2");
         } catch (e) {}
-        if (paymentMethod === "cash_on_delivery") {
+        if (effectivePaymentMethod === "cash_on_delivery" || effectivePaymentMethod === "free" || result?.isFree) {
           clearCart();
           setIsSuccess(true);
+          return;
         } else {
-          const params = new URLSearchParams({
-            type: "order",
-            orderId: result.orderId,
-            amount: result.amount || finalTotal,
-          });
-          
-            if (selectedMethod) {
-              try {
-                const intentResult = await api.client.post(`/payment/order/${result.orderId}`, {
-                  methodId: selectedMethod.payment_method_id,
-                  walletNumber: walletNumber || null,
-                });
-                const txData = intentResult.data;
-                const redirectUrl = txData.checkoutUrl || txData.paymentData?.redirectTo;
-                if (redirectUrl) {
-                  window.location.href = redirectUrl;
+          const methodParam = selectedMethod
+            ? `&method=${selectedMethod.id || (selectedMethod.payment_method_id === 2 ? "card" : selectedMethod.payment_method_id === 4 ? "wallet" : "fawry")}`
+            : "";
+
+          if (selectedMethod) {
+            try {
+              const txData = await api.payment.createOrderIntent(result.orderId, {
+                methodId: selectedMethod.payment_method_id,
+                walletNumber: walletNumber || null,
+              });
+
+              const redirectUrl =
+                txData.checkoutUrl ||
+                txData.paymentData?.redirectTo ||
+                txData.paymentData?.paymentUrl;
+
+              if (redirectUrl) {
+                if (isCardMethod(selectedMethod)) {
+                  setCardPayment({
+                    orderId: result.orderId,
+                    orderNumber: result.orderNumber,
+                    intentKey: txData.intentKey,
+                    iframeUrl: redirectUrl,
+                  });
                   return;
                 }
-              } catch(err) {
-                 toast.error(getLocalizedErrorMessage(err, isArabic ? "ar" : "en"));
-                 return;
+                window.location.href = redirectUrl;
+                return;
               }
-            }
-            navigate(`/payment?type=order&orderId=${result.orderId}`);
 
+              // Fawry / Wallet: navigate to PaymentPage WITHOUT intentKey in the URL.
+              // A stale intentKey from a cancelled/expired tx causes the backend to
+              // return HTTP 410. PaymentPage finds the active pending tx via orderId.
+              navigate(`/payment?type=order&orderId=${result.orderId}${methodParam}`);
+              return;
+            } catch (err) {
+              toast.error(getLocalizedErrorMessage(err, isArabic ? "ar" : "en"));
+              return;
+            }
+          }
+
+          navigate(`/payment?type=order&orderId=${result.orderId}${methodParam}`);
         }
       }
     } catch (err) {
@@ -306,29 +388,51 @@ export default function CheckoutPage() {
     }
   };
 
+  if (pageLoading) {
+    return (
+      <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex flex-col items-center justify-center p-6 text-center">
+        <div className="w-16 h-16 rounded-3xl bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-100 dark:border-indigo-900/50 flex items-center justify-center mb-4 shadow-inner">
+          <Loader2 className="w-8 h-8 animate-spin text-indigo-600 dark:text-indigo-400" />
+        </div>
+        <h3 className="text-lg font-black text-slate-800 dark:text-white mb-1">
+          {isArabic ? "جاري تجهيز صفحة الدفع..." : "Preparing checkout..."}
+        </h3>
+        <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 font-medium animate-pulse">
+          {isArabic
+            ? "يتم تحميل طرق الدفع وأسعار الشحن وتفاصيل طلبك..."
+            : "Loading payment methods, shipping rates and order details..."}
+        </p>
+      </div>
+    );
+  }
+
   if (isSuccess) {
     return (
       <div className="min-h-screen bg-slate-50 p-6 text-center text-slate-900 flex flex-col items-center justify-center">
         <CheckCircle className="mb-6 h-20 w-20 text-emerald-500" />
         <h1 className="mb-4 text-3xl font-black">
-          {isArabic ? "تم استلام طلبك" : "Order received"}
+          {isArabic ? "تم استلام وسداد طلبك بنجاح" : "Order received & paid successfully"}
         </h1>
         <p className="mb-8 max-w-md text-slate-500">
-          {isArabic
-            ? "سيتم الدفع عند استلام الطلب. سنتواصل معك لتأكيد التفاصيل."
-            : "Payment is due on delivery. We will contact you to confirm the details."}
+          {paymentMethod === "cash_on_delivery"
+            ? (isArabic
+                ? "سيتم الدفع عند استلام الطلب. سنتواصل معك لتأكيد التفاصيل."
+                : "Payment is due on delivery. We will contact you to confirm the details.")
+            : (isArabic
+                ? "تم سداد قيمة طلبك بنجاح وجاري تجهيزه للشحن فوراً!"
+                : "Your payment was processed successfully! Your order is being prepared for shipping.")}
         </p>
         <Link
-          to="/products"
+          to={isAuthenticated ? "/u/products" : "/products"}
           className="rounded-xl bg-slate-900 px-6 py-3 font-bold text-white transition-colors hover:bg-indigo-600"
         >
-          {t("store.backToStore")}
+          {t("store.backToStore") || (isArabic ? "العودة للمتجر" : "Back to Store")}
         </Link>
       </div>
     );
   }
 
-  if (!cart || cart.length === 0) {
+  if (!cardPayment && (!cart || cart.length === 0)) {
     return (
       <div className="min-h-screen bg-slate-50 text-slate-900 flex flex-col items-center justify-center p-6 text-center">
         <h1 className="text-3xl font-bold mb-4">
@@ -408,11 +512,68 @@ export default function CheckoutPage() {
         )}
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-12">
-          <form
-            key={user?._id || "guest"}
-            onSubmit={handleCheckout}
-            className="space-y-6 bg-white p-8 rounded-3xl border border-slate-200 shadow-sm"
-          >
+          {cardPayment ? (
+            <div className="bg-white p-6 sm:p-8 rounded-3xl border border-slate-200 shadow-sm space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-slate-100">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <CreditCard className="w-5 h-5 text-indigo-600" />
+                    <h2 className="text-base sm:text-lg font-bold text-slate-900">
+                      {isArabic ? "بوابة الدفع البنكي المشفرة (Visa / Mastercard / Meeza)" : "Secure Bank Checkout"}
+                    </h2>
+                  </div>
+                  <p className="text-xs text-slate-500 mt-1">
+                    {isArabic
+                      ? `تم إنشاء طلبك بنجاح (${cardPayment.orderNumber || cardPayment.orderId}). يرجى إدخال بيانات البطاقة لإتمام السداد مباشرة في نفس الصفحة:`
+                      : `Order created. Please enter card details below to complete payment:`}
+                  </p>
+                </div>
+                <div className="flex items-center gap-2 self-start sm:self-auto">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (cardPayment.intentKey) {
+                        api.payment.cancel(cardPayment.intentKey).catch(() => {});
+                      }
+                      setCardPayment(null);
+                    }}
+                    className="text-xs font-bold text-rose-600 hover:text-rose-700 bg-rose-50 hover:bg-rose-100 px-3.5 py-2 rounded-xl transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                    <span>{isArabic ? "إلغاء" : "Cancel"}</span>
+                  </button>
+                </div>
+              </div>
+
+              <div
+                ref={cardIframeRef}
+                className="w-full bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-inner relative"
+                style={{ height: "820px", minHeight: "780px" }}
+              >
+                {iframeLoading && (
+                  <div className="absolute inset-0 z-10 bg-white/95 flex flex-col items-center justify-center gap-3">
+                    <Loader2 className="w-8 h-8 animate-spin text-indigo-600" />
+                    <p className="text-xs font-bold text-slate-600">
+                      {isArabic ? "جاري تحميل بوابة الدفع البنكي الآمنة..." : "Loading secure payment portal..."}
+                    </p>
+                  </div>
+                )}
+                <iframe
+                  src={cardPayment.iframeUrl}
+                  onLoad={() => setIframeLoading(false)}
+                  className="w-full h-full border-0"
+                  allow="payment"
+                  allowFullScreen
+                  title="Secure Payment Portal"
+                />
+              </div>
+            </div>
+          ) : (
+            <form
+              key={user?._id || "guest"}
+              onSubmit={handleCheckout}
+              className="space-y-6 bg-white p-8 rounded-3xl border border-slate-200 shadow-sm"
+            >
             {/* Shipping Details */}
             <h2 className="text-xl font-bold mb-4 border-b border-slate-100 pb-4 text-slate-900">
               {t("store.shippingDetails")}
@@ -531,7 +692,20 @@ export default function CheckoutPage() {
             <h2 className="text-xl font-bold mb-4 border-b border-slate-100 pb-4 pt-4 text-slate-900">
               {t("store.paymentMethod") || "طريقة الدفع"}
             </h2>
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            {finalTotal <= 0 ? (
+              <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-200 flex items-center gap-3">
+                <CheckCircle className="w-5 h-5 text-emerald-600 shrink-0" />
+                <div>
+                  <span className="block font-bold text-emerald-900 text-sm">
+                    {isArabic ? "هذا الطلب مجاني بالكامل (0 ج.م)" : "This order is 100% Free (0 EGP)"}
+                  </span>
+                  <span className="block text-xs text-emerald-700 mt-0.5">
+                    {isArabic ? "لا يتطلب اختيار وسيلة دفع، سيتم تأكيد طلبك وشحنه فوراً." : "No payment gateway required, your order will be confirmed immediately."}
+                  </span>
+                </div>
+              </div>
+            ) : (
+            <div className={`grid grid-cols-1 gap-3 ${codEnabled ? "sm:grid-cols-2" : "sm:grid-cols-1"}`}>
               <label
                 className={`cursor-pointer rounded-xl border-2 p-4 transition-colors ${paymentMethod === "online" ? "border-indigo-600 bg-indigo-50/50 shadow-sm" : "border-slate-200 hover:border-indigo-300"}`}
               >
@@ -554,7 +728,7 @@ export default function CheckoutPage() {
                 {paymentMethod === "online" && methods.length > 0 && (
                   <div className="mt-4 flex flex-col gap-3 p-4 bg-white rounded-xl border border-slate-100">
                     <p className="text-sm font-bold text-slate-700 mb-2">
-                      {isArabic ? "OOOO1 OO1USU,O O U,O_U?O1" : "Select Payment Gateway"}
+                      {isArabic ? "اختر وسيلة الدفع الإلكتروني" : "Select Payment Gateway"}
                     </p>
                     {[...methods].sort((a, b) => {
                       const getWeight = (m) => {
@@ -584,26 +758,29 @@ export default function CheckoutPage() {
                 )}
 
               </label>
-              <label
-                className={`cursor-pointer rounded-xl border-2 p-4 transition-colors ${paymentMethod === "cash_on_delivery" ? "border-indigo-600 bg-indigo-50/50 shadow-sm" : "border-slate-200 hover:border-indigo-300"}`}
-              >
-                <span className="flex items-center gap-3 font-bold text-slate-900">
-                  <input
-                    type="radio"
-                    name="checkoutPaymentMethod"
-                    value="cash_on_delivery"
-                    checked={paymentMethod === "cash_on_delivery"}
-                    onChange={() => setPaymentMethod("cash_on_delivery")}
-                    className="h-4 w-4 accent-indigo-600"
-                  />
-                  <Truck className="h-5 w-5 text-indigo-500" />
-                  {t("store.cashOnDelivery")}
-                </span>
-                <span className="mt-2 block text-sm text-slate-500">
-                  {t("store.cashOnDeliveryDesc")}
-                </span>
-              </label>
+              {codEnabled && (
+                <label
+                  className={`cursor-pointer rounded-xl border-2 p-4 transition-colors ${paymentMethod === "cash_on_delivery" ? "border-indigo-600 bg-indigo-50/50 shadow-sm" : "border-slate-200 hover:border-indigo-300"}`}
+                >
+                  <span className="flex items-center gap-3 font-bold text-slate-900">
+                    <input
+                      type="radio"
+                      name="checkoutPaymentMethod"
+                      value="cash_on_delivery"
+                      checked={paymentMethod === "cash_on_delivery"}
+                      onChange={() => setPaymentMethod("cash_on_delivery")}
+                      className="h-4 w-4 accent-indigo-600"
+                    />
+                    <Truck className="h-5 w-5 text-indigo-500" />
+                    {t("store.cashOnDelivery")}
+                  </span>
+                  <span className="mt-2 block text-sm text-slate-500">
+                    {t("store.cashOnDeliveryDesc")}
+                  </span>
+                </label>
+              )}
             </div>
+            )}
 
             {pendingPayment && (
               <div className="mt-6 p-4 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-xs font-bold flex items-center gap-2">
@@ -618,14 +795,16 @@ export default function CheckoutPage() {
 
             <button
               type="submit"
-              disabled={loading || Boolean(pendingPayment) || (paymentMethod === "online" && (!selectedMethod || (isWalletMethod(selectedMethod) && !isWalletValid)))}
+              disabled={loading || Boolean(pendingPayment) || (finalTotal > 0 && paymentMethod === "online" && (!selectedMethod || (isWalletMethod(selectedMethod) && !isWalletValid)))}
               className="w-full mt-6 bg-slate-900 hover:bg-indigo-600 disabled:bg-slate-400 disabled:cursor-not-allowed text-white py-4 rounded-xl font-bold transition-all shadow-md hover:shadow-lg text-lg flex justify-center items-center gap-2"
             >
               {loading ? (
                 "جاري إتمام الطلب..."
               ) : (
                 <>
-                  {paymentMethod === "cash_on_delivery"
+                  {finalTotal <= 0
+                    ? (isArabic ? "تأكيد الطلب مجاناً" : "Confirm Free Order")
+                    : paymentMethod === "cash_on_delivery"
                     ? t("store.confirmOrder")
                     : t("store.continueCheckout")}{" "}
                   ({formatMoney(finalTotal)})
@@ -633,6 +812,7 @@ export default function CheckoutPage() {
               )}
             </button>
           </form>
+          )}
 
           {/* Cart Summary */}
           <div className="bg-white p-8 rounded-3xl border border-slate-200 shadow-sm h-fit sticky top-28">
@@ -649,11 +829,33 @@ export default function CheckoutPage() {
                     <span className="text-indigo-600 font-bold bg-indigo-50 px-2 py-1 rounded-md">
                       {item.quantity}x
                     </span>
-                    <span className="font-medium text-slate-800">
-                      {item.rawName?.[language] ||
-                        item.rawName?.ar ||
-                        item.name}
-                    </span>
+                    <div className="flex flex-col">
+                      <span className="font-medium text-slate-800">
+                        {item.rawName?.[language] ||
+                          item.rawName?.ar ||
+                          item.name}
+                      </span>
+                      {item.color && (
+                        <span className="text-[11px] text-slate-500 flex items-center gap-1 mt-0.5">
+                          <span
+                            className="w-2.5 h-2.5 rounded-full border border-black/10 inline-block shrink-0"
+                            style={{
+                              backgroundColor:
+                                (typeof item.color === "object"
+                                  ? item.color.colorCode
+                                  : item.color) || "#000",
+                            }}
+                          />
+                          {typeof item.color === "object"
+                            ? typeof item.color.name === "object"
+                              ? item.color.name[language] ||
+                                item.color.name.ar ||
+                                item.color.name.en
+                              : item.color.name || item.color.colorCode
+                            : String(item.color)}
+                        </span>
+                      )}
+                    </div>
                   </div>
                   <span className="font-bold">
                     {formatMoney(item.price * item.quantity)}

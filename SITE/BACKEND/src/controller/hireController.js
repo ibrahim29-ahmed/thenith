@@ -5,6 +5,7 @@ const { asyncHandler } = _asyncHandler997;
 import _httpError8920 from "../util/httpError.js";
 const { HttpError } = _httpError8920;
 import Card from "../models/Card.js";
+import User from "../models/User.js";
 import ContactRequest from "../models/ContactRequest.js";
 import _dashboardNotifications3762 from "../util/dashboardNotifications.js";
 const { notifyUser } = _dashboardNotifications3762;
@@ -54,7 +55,11 @@ const createHireRequest = asyncHandler(async (req, res) => {
 
   const subscription = await getSubscriptionState(card.userId);
   const maxCards = getFeatureLimit(subscription.entitlements, "maxCards");
-  if (maxCards !== null) {
+  const user = await User.findById(card.userId).select("activeCardId").lean();
+  const isActiveCard =
+    card.isActive === true || String(card._id) === String(user?.activeCardId);
+
+  if (maxCards !== null && !isActiveCard) {
     const earlierCards = await Card.countDocuments({
       userId: card.userId,
       createdAt: { $lt: card.createdAt },

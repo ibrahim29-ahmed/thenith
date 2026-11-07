@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef } from "react";
 import {
-  Briefcase,
+  MessageSquare,
   CalendarDays,
   Mail,
   Phone,
@@ -26,7 +26,11 @@ export default function MessagesPage({
   const isArabic = language === "ar";
   const inboxItems = getInboxItems(selectedCard);
   const filteredItems =
-    filter === "all" ? inboxItems : inboxItems.filter((i) => i.type === filter);
+    filter === "all"
+      ? inboxItems
+      : filter === "message"
+        ? inboxItems.filter((i) => i.type !== "appointment")
+        : inboxItems.filter((i) => i.type === filter);
 
   const inboxLabel = selectedCard
     ? getInboxLabel(selectedCard, t)
@@ -131,7 +135,7 @@ export default function MessagesPage({
             const cardInboxItems = getInboxItems(card);
             const cardInboxLabel = getInboxLabel(card, t);
             const Icon =
-              card.actionType === "calendar" ? CalendarDays : Briefcase;
+              card.actionType === "calendar" ? CalendarDays : MessageSquare;
             return (
               <button
                 key={card.id}
@@ -170,36 +174,38 @@ export default function MessagesPage({
         </div>
       ) : (
         <>
-          {inboxItems.length > 0 && (
-            <div className="flex items-center gap-2 overflow-x-auto pb-2 scrollbar-hide">
-              <button
-                onClick={() => setFilter("all")}
-                className={`shrink-0 rounded-full px-4 py-2 text-sm font-bold transition-all ${filter === "all" ? "bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900" : "bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-400 dark:hover:bg-slate-700"}`}
-              >
-                {t("all") || (language === "ar" ? "الكل" : "All")}
-              </button>
-              <button
-                onClick={() => setFilter("appointment")}
-                className={`shrink-0 rounded-full px-4 py-2 text-sm font-bold transition-all ${filter === "appointment" ? "bg-indigo-600 text-white dark:bg-indigo-500" : "bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-400 dark:hover:bg-slate-700"}`}
-              >
-                {t("appointments") ||
-                  (language === "ar" ? "المواعيد" : "Appointments")}
-                <span className="ms-2 rtl:mr-2 rtl:ml-0 rounded-full bg-white/20 px-2 py-0.5 text-[10px]">
-                  {inboxItems.filter((i) => i.type === "appointment").length}
-                </span>
-              </button>
-              <button
-                onClick={() => setFilter("request")}
-                className={`shrink-0 rounded-full px-4 py-2 text-sm font-bold transition-all ${filter === "request" ? "bg-emerald-600 text-white dark:bg-emerald-500" : "bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-400 dark:hover:bg-slate-700"}`}
-              >
-                {t("workRequests") ||
-                  (language === "ar" ? "طلبات التوظيف" : "Requests")}
-                <span className="ms-2 rtl:mr-2 rtl:ml-0 rounded-full bg-white/20 px-2 py-0.5 text-[10px]">
-                  {inboxItems.filter((i) => i.type === "request").length}
-                </span>
-              </button>
-            </div>
-          )}
+          {inboxItems.length > 0 &&
+            inboxItems.some((i) => i.type === "appointment") &&
+            inboxItems.some((i) => i.type !== "appointment") && (
+              <div className="flex items-center gap-2 overflow-x-auto pb-2 scrollbar-hide">
+                <button
+                  onClick={() => setFilter("all")}
+                  className={`shrink-0 rounded-full px-4 py-2 text-sm font-bold transition-all ${filter === "all" ? "bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900" : "bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-400 dark:hover:bg-slate-700"}`}
+                >
+                  {t("all") || (language === "ar" ? "الكل" : "All")}
+                </button>
+                <button
+                  onClick={() => setFilter("message")}
+                  className={`shrink-0 rounded-full px-4 py-2 text-sm font-bold transition-all ${filter === "message" ? "bg-indigo-600 text-white dark:bg-indigo-500" : "bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-400 dark:hover:bg-slate-700"}`}
+                >
+                  {t("messages") ||
+                    (language === "ar" ? "الرسائل" : "Messages")}
+                  <span className="ms-2 rtl:mr-2 rtl:ml-0 rounded-full bg-white/20 px-2 py-0.5 text-[10px]">
+                    {inboxItems.filter((i) => i.type !== "appointment").length}
+                  </span>
+                </button>
+                <button
+                  onClick={() => setFilter("appointment")}
+                  className={`shrink-0 rounded-full px-4 py-2 text-sm font-bold transition-all ${filter === "appointment" ? "bg-indigo-600 text-white dark:bg-indigo-500" : "bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-400 dark:hover:bg-slate-700"}`}
+                >
+                  {t("appointments") ||
+                    (language === "ar" ? "المواعيد" : "Appointments")}
+                  <span className="ms-2 rtl:mr-2 rtl:ml-0 rounded-full bg-white/20 px-2 py-0.5 text-[10px]">
+                    {inboxItems.filter((i) => i.type === "appointment").length}
+                  </span>
+                </button>
+              </div>
+            )}
 
           {!filteredItems.length ? (
             <EmptyState
@@ -207,7 +213,7 @@ export default function MessagesPage({
                 filter === "appointment" ||
                 selectedCard.actionType === "calendar"
                   ? CalendarDays
-                  : Briefcase
+                  : MessageSquare
               }
               title={t("noItems")}
               text={t("messagesIntro")}

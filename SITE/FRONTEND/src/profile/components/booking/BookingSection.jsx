@@ -149,7 +149,7 @@ export default function BookingSection() {
   const handleDateSelect = (date) => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-    if (date < today) return;
+    if (date < today || isDayFullyBooked(date)) return;
     setSelectedDate(date);
     setSelectedTime("");
     setErrorMsg("");
@@ -165,11 +165,31 @@ export default function BookingSection() {
     return getBookedTimesForDate(date).includes(slotValue);
   };
 
-  // Is the entire day fully booked?
+  const isSlotPast = (date, slotValue) => {
+    if (!date) return false;
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const targetDate = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+
+    if (targetDate < today) return true;
+    if (targetDate > today) return false;
+
+    // Selected date is today: check if time has already passed
+    const [h, m = 0] = String(slotValue).split(":").map(Number);
+    const slotTime = new Date(now.getFullYear(), now.getMonth(), now.getDate(), h, m, 0, 0);
+    return slotTime <= now;
+  };
+
+  const isSlotUnavailable = (date, slotValue) => {
+    return isSlotBooked(date, slotValue) || isSlotPast(date, slotValue);
+  };
+
+  // Is the entire day fully booked or has all its slots passed?
   const isDayFullyBooked = (date) => {
     if (!date) return false;
     const booked = getBookedTimesForDate(date);
-    return booked.length >= TIME_SLOTS.length;
+    if (!TIME_SLOTS.length) return false;
+    return TIME_SLOTS.every((slot) => booked.includes(slot.value) || isSlotPast(date, slot.value));
   };
 
   // ── Form helpers ───────────────────────────────────────────────────────────
@@ -183,6 +203,14 @@ export default function BookingSection() {
 
     if (!selectedDate || !selectedTime) {
       setErrorMsg(t.validationDate || "Please select a date and time.");
+      return;
+    }
+    if (isSlotPast(selectedDate, selectedTime)) {
+      setErrorMsg(
+        language === "ar"
+          ? "هذا الموعد قد مضى بالفعل، يرجى اختيار موعد آخر."
+          : "This time slot has already passed. Please select another time.",
+      );
       return;
     }
     if (!formData.name.trim()) {
@@ -396,9 +424,9 @@ export default function BookingSection() {
                 type="button"
                 title={
                   fullyBooked
-                    ? "Fully booked"
+                    ? (language === "ar" ? "لا توجد مواعيد متاحة" : "No available slots")
                     : !isAvailable && !isPast
-                      ? "Not available"
+                      ? (language === "ar" ? "غير متاح" : "Not available")
                       : undefined
                 }
                 className={[
@@ -451,38 +479,52 @@ export default function BookingSection() {
                 </span>
               </div>
 
-              <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
-                {TIME_SLOTS.map((slot) => {
-                  const booked = isSlotBooked(selectedDate, slot.value);
-                  const chosen = selectedTime === slot.value;
+              {TIME_SLOTS.every((s) => isSlotUnavailable(selectedDate, s.value)) ? (
+                <div className="py-6 text-center text-xs font-medium text-slate-500 dark:text-slate-400">
+                  {language === "ar"
+                    ? "لا توجد مواعيد متاحة في هذا اليوم، يرجى اختيار يوم آخر."
+                    : "No available time slots for this date. Please choose another day."}
+                </div>
+              ) : (
+                <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
+                  {TIME_SLOTS.map((slot) => {
+                    const booked = isSlotBooked(selectedDate, slot.value);
+                    const past = isSlotPast(selectedDate, slot.value);
+                    const unavailable = booked || past;
+                    const chosen = selectedTime === slot.value;
 
-                  return (
-                    <button
-                      key={slot.value}
-                      type="button"
-                      disabled={booked}
-                      onClick={() => !booked && setSelectedTime(slot.value)}
-                      className={[
-                        "py-2 px-1 rounded-xl text-xs transition-all border flex flex-col items-center gap-0.5",
-                        booked
-                          ? "border-slate-100 bg-slate-50 text-slate-300 cursor-not-allowed dark:border-slate-800 dark:bg-slate-900 dark:text-slate-600"
-                          : chosen
-                            ? "border-slate-900 bg-slate-900 text-white dark:border-white dark:bg-white dark:text-slate-900"
-                            : "border-slate-200 dark:border-slate-700 hover:border-slate-400 dark:hover:border-slate-500",
-                      ]
-                        .filter(Boolean)
-                        .join(" ")}
-                    >
-                      <span>{slot.label}</span>
-                      {booked && (
-                        <span className="text-[10px] font-medium text-red-400 dark:text-red-500">
-                          {language === "ar" ? "محجوز" : "Booked"}
-                        </span>
-                      )}
-                    </button>
-                  );
-                })}
-              </div>
+                    return (
+                      <button
+                        key={slot.value}
+                        type="button"
+                        disabled={unavailable}
+                        onClick={() => !unavailable && setSelectedTime(slot.value)}
+                        className={[
+                          "py-2 px-1 rounded-xl text-xs transition-all border flex flex-col items-center gap-0.5",
+                          unavailable
+                            ? "border-slate-100 bg-slate-50 text-slate-300 cursor-not-allowed dark:border-slate-800 dark:bg-slate-900 dark:text-slate-600 opacity-60"
+                            : chosen
+                              ? "border-slate-900 bg-slate-900 text-white dark:border-white dark:bg-white dark:text-slate-900"
+                              : "border-slate-200 dark:border-slate-700 hover:border-slate-400 dark:hover:border-slate-500",
+                        ]
+                          .filter(Boolean)
+                          .join(" ")}
+                      >
+                        <span className={unavailable ? "line-through opacity-70" : ""}>{slot.label}</span>
+                        {booked ? (
+                          <span className="text-[10px] font-medium text-red-400 dark:text-red-500">
+                            {language === "ar" ? "محجوز" : "Booked"}
+                          </span>
+                        ) : past ? (
+                          <span className="text-[10px] font-medium text-slate-400 dark:text-slate-500">
+                            {language === "ar" ? "غير متاح" : "Passed"}
+                          </span>
+                        ) : null}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           </motion.div>
         )}

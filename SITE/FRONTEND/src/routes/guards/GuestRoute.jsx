@@ -19,6 +19,12 @@ export default function GuestRoute({ children }) {
 
   if (isAuthenticated) {
     const searchParams = new URLSearchParams(location.search);
+    const refCode = searchParams.get("ref");
+    if (refCode) {
+      const cleanRef = refCode.trim().toUpperCase();
+      return <Navigate to={`/r/${encodeURIComponent(cleanRef)}`} replace />;
+    }
+
     const rawReturnTo = searchParams.get("returnTo");
     const isSafeReturnTo =
       rawReturnTo &&

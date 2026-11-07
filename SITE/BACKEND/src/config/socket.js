@@ -1,9 +1,11 @@
 import _env from "./env.js";
-const { env, clientOrigins } = _env;
+import { corsOptions } from "./cors.js";
+
+const { env } = _env;
 
 export const socketConfig = {
   cors: {
-    origin: clientOrigins,
+    origin: corsOptions.origin,
     credentials: true,
   },
   pingTimeout: env.SOCKET_PING_TIMEOUT || 60000,

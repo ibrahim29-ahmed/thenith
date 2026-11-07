@@ -31,12 +31,21 @@ export const paymentRoutes = {
     request(`/payment/order/${orderId}`, { method: "POST", data: body }),
 
   /**
-   * Verify a completed transaction by intentKey.
+   * Verify a completed transaction by intentKey or extra identifiers (invoice_id).
    * @param {string} intentKey
+   * @param {object} [extraData]
    * @returns { success, status, type, state? }
    */
-  verify: (intentKey) =>
-    request("/payment/verify", { method: "POST", data: { intentKey } }),
+  verify: (intentKey, extraData = {}) => {
+    const cleanKey =
+      intentKey && intentKey !== "undefined" && intentKey !== "null"
+        ? intentKey
+        : undefined;
+    return request("/payment/verify", {
+      method: "POST",
+      data: { intentKey: cleanKey, ...extraData },
+    });
+  },
 
   /**
    * Cancel a pending transaction by intentKey.
@@ -49,14 +58,17 @@ export const paymentRoutes = {
   /**
    * Get invoice details from backend to ensure secure amount loading
    * @param {string} type - "order" or "subscription"
-   * @param {string} id - Order ID or Plan ID
+   * @param {string} id - Order ID, Plan ID, or Transaction ID
    */
   getInvoiceDetails: (type, id, billingPeriod, couponCode, intentKey) => {
-    let url = `/payment/invoice/${type}/${encodeURIComponent(id)}?`;
+    const safeType = type === "store" ? "order" : type;
+    let url = `/payment/invoice/${safeType}/${encodeURIComponent(id)}?`;
     if (billingPeriod) url += `billingPeriod=${billingPeriod}&`;
     if (couponCode) url += `couponCode=${encodeURIComponent(couponCode)}&`;
-    if (intentKey) url += `intentKey=${encodeURIComponent(intentKey)}&`;
-    return request(url.replace(/[?&]$/, ''));
+    if (intentKey && intentKey !== "undefined" && intentKey !== "null") {
+      url += `intentKey=${encodeURIComponent(intentKey)}&`;
+    }
+    return request(url.replace(/[?&]$/, ""));
   },
 };
 

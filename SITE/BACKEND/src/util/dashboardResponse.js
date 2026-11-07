@@ -23,6 +23,12 @@ function buildOwner(user, subscription, activeCard) {
     username: canUseCustomUrl ? user.username : null,
     publicId: user.publicId,
     orders: user.orders,
+    paymentMethods: user.paymentMethods || [],
+    activePaymentMethodId:
+      user.activePaymentMethodId ||
+      (user.paymentMethods && user.paymentMethods.length > 0
+        ? user.paymentMethods[0].id
+        : null),
     activeCardId: activeCard?._id || null,
     publicUrl:
       canUseCustomUrl && user.username

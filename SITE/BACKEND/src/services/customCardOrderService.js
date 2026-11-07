@@ -3,6 +3,7 @@ import axios from "axios";
 import sharp from "sharp";
 import QRCode from "qrcode";
 import PhysicalCard, { generateInternalCardId, generateCardPassword6 } from "../models/PhysicalCard.js";
+import Product from "../models/Product.js";
 import _idGenerator from "../util/idGenerator.js";
 import _env from "../config/env.js";
 import { uploadToCloudinary } from "./uploadService.js";
@@ -58,7 +59,79 @@ export async function processCustomCardsForOrder(order) {
   }
 
   for (const item of order.items) {
-    if (!item.customDesign) continue;
+    // If standard product without customDesign (e.g. smart card with selected color from store)
+    if (!item.customDesign) {
+      try {
+        const qty = Math.max(1, item.quantity || 1);
+        item.generatedCards = Array.isArray(item.generatedCards) ? item.generatedCards : [];
+
+        if (item.generatedCards.length < qty) {
+          let product = null;
+          if (item.productId) {
+            try {
+              product = await Product.findById(item.productId);
+            } catch (pErr) {
+              console.warn("[customCardOrderService] Product lookup error:", pErr?.message);
+            }
+          }
+
+          const colorName = item.color?.name?.ar || item.color?.name?.en || item.color?.name || item.color?.colorCode || "black";
+          const needed = qty - item.generatedCards.length;
+
+          for (let i = 0; i < needed; i++) {
+            let cardId = generateInternalCardId();
+            let publicId = generatePublicId();
+            let attempts = 0;
+            while (attempts < 10) {
+              const existing = await PhysicalCard.findOne({ $or: [{ cardId }, { publicId }] });
+              if (!existing) break;
+              cardId = generateInternalCardId();
+              publicId = generatePublicId();
+              attempts++;
+            }
+
+            const cardPassword = generateCardPassword6();
+            const targetUrl = user
+              ? `${baseUrl}/p/${user.username || user.publicId}`
+              : `${baseUrl}/c/${publicId}`;
+
+            const physicalCard = await PhysicalCard.create({
+              cardId,
+              publicId,
+              cardPassword,
+              targetUrl,
+              cardType: product?.material === "metal" ? "metal" : product?.material === "wood" ? "bamboo" : "standard",
+              productType: product?.category || "card",
+              nfcChipType: product?.nfcChipType || "NTAG215",
+              color: colorName,
+              orderId: order._id,
+              orderNumber: order.orderNumber,
+              orderColor: item.color || null,
+              productName: typeof item.name === 'object' ? (item.name.ar || item.name.en || '') : String(item.name || ''),
+              distributionType: "sale",
+              status: order.userId ? "claimed" : "unclaimed",
+              userId: order.userId || null,
+              manufacturedAt: new Date(),
+              claimedAt: order.userId ? new Date() : null,
+            });
+
+            item.generatedCards.push({
+              physicalCardId: physicalCard._id,
+              cardId: physicalCard.cardId,
+              publicId: physicalCard.publicId,
+              cardPassword: physicalCard.cardPassword,
+              cardUrl: `${baseUrl}/c/${physicalCard.publicId}`,
+              color: item.color || null,
+              createdAt: new Date(),
+            });
+            modified = true;
+          }
+        }
+      } catch (stdErr) {
+        console.error("[customCardOrderService] Error generating cards for standard order item:", stdErr);
+      }
+      continue;
+    }
 
     // Skip if already generated and QR already replaced
     if (
@@ -94,6 +167,8 @@ export async function processCustomCardsForOrder(order) {
           ? `${baseUrl}/p/${user.username || user.publicId}`
           : `${baseUrl}/p/preview`;
 
+        const colorName = item.color?.name?.ar || item.color?.name?.en || item.color?.name || item.color?.colorCode || "custom";
+
         // 2. Create official record in Thenith Smart Cards Management (physical_cards collection)
         physicalCard = await PhysicalCard.create({
           cardId,
@@ -101,7 +176,11 @@ export async function processCustomCardsForOrder(order) {
           cardPassword,
           targetUrl,
           cardType: "custom",
-          color: "custom",
+          color: colorName,
+          orderId: order._id,
+          orderNumber: order.orderNumber,
+          orderColor: item.color || null,
+          productName: typeof item.name === 'object' ? (item.name.ar || item.name.en || 'كارت مخصص') : String(item.name || 'كارت مخصص'),
           distributionType: "sale",
           status: "claimed",
           userId: order.userId || null,
@@ -244,6 +323,18 @@ export async function processCustomCardsForOrder(order) {
         qrReplacedInDesign: Boolean(item.customDesign.qrReplacedInDesign),
         generatedAt: new Date(),
       };
+
+      item.generatedCards = [
+        {
+          physicalCardId: physicalCard._id,
+          cardId: physicalCard.cardId,
+          publicId: physicalCard.publicId,
+          cardPassword: physicalCard.cardPassword,
+          cardUrl: realCardUrl,
+          color: item.color || null,
+          createdAt: new Date(),
+        },
+      ];
 
       modified = true;
     } catch (itemErr) {

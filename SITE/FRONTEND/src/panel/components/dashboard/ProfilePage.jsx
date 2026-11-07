@@ -18,6 +18,7 @@ import {
   CalendarDays,
   BadgeCheck,
   Ban,
+  CreditCard,
 } from "lucide-react";
 import Field from "../ui/Field.jsx";
 import { useConfirm } from "../../context/ConfirmContext";
@@ -60,6 +61,19 @@ const statusTranslation = {
   Delivered: { en: "Delivered", ar: "تم التسليم" },
   Cancelled: { en: "Cancelled", ar: "ملغي" },
   Returned: { en: "Returned", ar: "مرتجع" },
+};
+
+const isCashOnDeliveryOrder = (order) => {
+  if (!order) return false;
+  const pm = String(order.paymentMethod || "").toLowerCase();
+  const pmn = String(order.paymentMethodName || "").toLowerCase();
+  return (
+    pm === "cash_on_delivery" ||
+    pm === "cod" ||
+    pmn.includes("استلام") ||
+    pmn.includes("cash on delivery") ||
+    pmn.includes("cod")
+  );
 };
 
 // Only allow letters, numbers, hyphens, underscores
@@ -251,6 +265,24 @@ export default function ProfilePage({
     } finally {
       setCancellingSub(null);
     }
+  };
+
+  const handleResumePayment = (item) => {
+    if (!item) return;
+    const isStore = item.orderType === "store" || item.type === "order";
+    const params = new URLSearchParams();
+    params.set("type", isStore ? "order" : "subscription");
+    params.set("id", item._id);
+    if (isStore) {
+      params.set("orderId", item.referenceId || item._id);
+    } else if (item.planId) {
+      params.set("planId", item.planId?._id || item.planId);
+    }
+    const cleanIntent = item.intentKey;
+    if (cleanIntent && cleanIntent !== "undefined" && cleanIntent !== "null") {
+      params.set("intentKey", cleanIntent);
+    }
+    window.location.href = `/payment?${params.toString()}`;
   };
 
   useEffect(() => {
@@ -504,8 +536,13 @@ export default function ProfilePage({
           </h2>
 
           {loadingSubscriptions ? (
-            <div className="flex justify-center py-10 my-auto">
-              <Loader2 className="h-8 w-8 animate-spin text-slate-400" />
+            <div className="space-y-3 py-2 animate-pulse">
+              {[...Array(2)].map((_, i) => (
+                <div
+                  key={i}
+                  className="h-16 rounded-2xl bg-slate-100 dark:bg-slate-800/60 border border-slate-200/50 dark:border-slate-800/50"
+                />
+              ))}
             </div>
           ) : subscriptions.length === 0 ? (
             <div className="flex flex-col items-center justify-center gap-2 py-10 text-center my-auto">
@@ -529,11 +566,44 @@ export default function ProfilePage({
                         ? "طلب متجر"
                         : "Store Order";
 
+                  const isCard =
+                    sub.paymentMethodId === 2 ||
+                    /visa|mastercard|card|فيزا|ماستر|بطاقة/i.test(
+                      sub.paymentMethodName || "",
+                    );
+
+                  const isTxExpired = (() => {
+                    if (sub.status === "expired") return true;
+                    if (sub.status !== "pending") return false;
+                    const cTime = new Date(sub.fawaterakCreatedAt || sub.createdAt || Date.now()).getTime();
+                    const isWallet = Boolean(
+                      sub.paymentMethodId === 4 ||
+                      sub.paymentData?.mobileWalletNumber ||
+                      sub.paymentData?.meezaQrCode ||
+                      sub.paymentData?.isoQr ||
+                      /wallet|محفظ|meeza|كاش/i.test(sub.paymentMethodName || "")
+                    );
+                    if (isWallet) {
+                      const maxWallet = (!isNaN(cTime) ? cTime : Date.now()) + 5 * 60 * 1000;
+                      return Date.now() > maxWallet;
+                    }
+                    const expDate =
+                      sub.fawaterakExpireDate ||
+                      sub.paymentData?.fawaterakExpireDate ||
+                      sub.paymentData?.expirationTime ||
+                      sub.paymentData?.expireDate;
+                    if (expDate) {
+                      const expTime = new Date(expDate).getTime();
+                      if (!isNaN(expTime)) return Date.now() > expTime;
+                    }
+                    return false;
+                  })();
+
                   const isActive = sub.status === "paid";
-                  const isPending = sub.status === "pending";
+                  const isPending = sub.status === "pending" && !isCard && !isTxExpired;
                   const isCancelled =
                     sub.status === "cancelled" || sub.status === "failed";
-                  const isExpired = sub.status === "expired";
+                  const isExpired = sub.status === "expired" || isTxExpired;
 
                   const statusBadge = isActive
                     ? {
@@ -598,14 +668,7 @@ export default function ProfilePage({
 
                         {isPending && (
                           <button
-                            onClick={() => {
-                              const params = new URLSearchParams({
-                                type: sub.orderType || "subscription",
-                                id: sub._id,
-                                intentKey: sub.intentKey || sub._id,
-                              });
-                              window.location.href = `/payment?${params.toString()}`;
-                            }}
+                            onClick={() => handleResumePayment(sub)}
                             className="rounded-lg bg-amber-500 hover:bg-amber-600 text-white px-2.5 py-1 text-[11px] font-bold transition-colors shadow-sm"
                           >
                             {isArabic ? "استكمال الدفع" : "Pay Now"}
@@ -823,8 +886,13 @@ export default function ProfilePage({
         </h2>
 
         {loadingOrders ? (
-          <div className="flex justify-center py-10">
-            <Loader2 className="h-8 w-8 animate-spin text-slate-400" />
+          <div className="space-y-3 py-2 animate-pulse">
+            {[...Array(3)].map((_, i) => (
+              <div
+                key={i}
+                className="h-20 rounded-2xl bg-slate-100 dark:bg-slate-800/60 border border-slate-200/50 dark:border-slate-800/50"
+              />
+            ))}
           </div>
         ) : orders.length === 0 ? (
           <div className="flex flex-col items-center justify-center gap-2 py-10 text-center">
@@ -885,23 +953,22 @@ export default function ProfilePage({
                       {translatedStatus}
                     </span>
                     <button
-                      onClick={() => {
-                        if (order.status === "pending") {
-                          const params = new URLSearchParams({
-                            type: "order",
-                            orderId: order._id,
-                            id: order._id,
-                            intentKey: order.intentKey || order._id,
-                          });
-                          window.location.href = `/payment?${params.toString()}`;
-                        } else {
-                          setSelectedOrderDetails(order);
-                        }
-                      }}
+                      type="button"
+                      onClick={() => setSelectedOrderDetails(order)}
                       className="rounded-lg bg-indigo-50 px-3 py-1.5 text-xs font-bold text-indigo-600 transition-colors hover:bg-indigo-100 dark:bg-indigo-900/30 dark:text-indigo-400 dark:hover:bg-indigo-900/50"
                     >
                       {isArabic ? "التفاصيل" : "Details"}
                     </button>
+                    {!isCashOnDeliveryOrder(order) && (order.status === "pending" || order.paymentStatus === "pending") && (
+                      <button
+                        type="button"
+                        onClick={() => handleResumePayment({ ...order, orderType: "store" })}
+                        className="rounded-lg bg-amber-500 hover:bg-amber-600 px-3 py-1.5 text-xs font-bold text-white transition-colors flex items-center gap-1 shadow-xs"
+                      >
+                        <CreditCard className="w-3.5 h-3.5" />
+                        <span>{isArabic ? "دفع الآن" : "Pay Now"}</span>
+                      </button>
+                    )}
                   </div>
                 </div>
               );
@@ -1030,26 +1097,22 @@ export default function ProfilePage({
                       </span>
 
                       <button
-                        onClick={() => {
-                          if (sub.status === "pending") {
-                            const params = new URLSearchParams({
-                              type: "subscription",
-                              planId: sub.plan, // wait, is planId the key or the object _id? In the user object it's usually the plan string or plan object _id. We'll pass the ID.
-                              id: sub._id,
-                              intentKey:
-                                sub.intentKey ||
-                                sub.providerSubscriptionId ||
-                                sub._id,
-                            });
-                            window.location.href = `/payment?${params.toString()}`;
-                          } else {
-                            setSelectedSubDetails(sub);
-                          }
-                        }}
+                        type="button"
+                        onClick={() => setSelectedSubDetails(sub)}
                         className="rounded-lg bg-indigo-50 px-3 py-1 text-[11px] font-bold text-indigo-600 transition-colors hover:bg-indigo-100 dark:bg-indigo-900/30 dark:text-indigo-400 dark:hover:bg-indigo-900/50"
                       >
                         {isArabic ? "التفاصيل" : "Details"}
                       </button>
+                      {sub.status === "pending" && (
+                        <button
+                          type="button"
+                          onClick={() => handleResumePayment(sub)}
+                          className="rounded-lg bg-amber-500 hover:bg-amber-600 px-2.5 py-1 text-[11px] font-bold text-white transition-colors flex items-center gap-1 shadow-xs"
+                        >
+                          <CreditCard className="w-3 h-3" />
+                          <span>{isArabic ? "دفع" : "Pay"}</span>
+                        </button>
+                      )}
                     </div>
                   </div>
                 );
@@ -1216,16 +1279,7 @@ export default function ProfilePage({
               {selectedSubDetails.status === "pending" && (
                 <div className="pt-2 flex gap-3">
                   <button
-                    onClick={() => {
-                      const params = new URLSearchParams({
-                        type: selectedSubDetails.orderType || "subscription",
-                        id: selectedSubDetails._id,
-                        intentKey:
-                          selectedSubDetails.intentKey ||
-                          selectedSubDetails._id,
-                      });
-                      window.location.href = `/payment?${params.toString()}`;
-                    }}
+                    onClick={() => handleResumePayment(selectedSubDetails)}
                     className="flex-1 py-3 px-4 rounded-xl bg-amber-500 hover:bg-amber-600 text-white font-bold text-sm transition-colors flex items-center justify-center gap-2 shadow-sm"
                   >
                     {isArabic ? "استكمال الدفع الآن" : "Complete Payment Now"}
@@ -1266,17 +1320,33 @@ export default function ProfilePage({
                 {selectedOrderDetails.items?.map((item, idx) => (
                   <div
                     key={idx}
-                    className="flex items-center justify-between rounded-xl border border-slate-100 p-3 dark:border-slate-800"
+                    className="flex items-center justify-between gap-3 rounded-xl border border-slate-100 p-3 dark:border-slate-800"
                   >
-                    <div>
-                      <p className="text-sm font-bold text-slate-800 dark:text-white">
-                        {parseLocalizedName(item.name, isArabic)}
-                      </p>
-                      <p className="text-xs text-slate-500">
-                        {item.quantity} x {formatMoney(item.price)}
-                      </p>
+                    <div className="flex items-center gap-3 min-w-0">
+                      {item.customDesign?.image && (
+                        <img
+                          src={item.customDesign.image}
+                          alt="Custom Design"
+                          className="w-10 h-10 object-cover rounded-lg border border-slate-200 shrink-0"
+                        />
+                      )}
+                      <div className="min-w-0">
+                        <p className="text-sm font-bold text-slate-800 dark:text-white flex items-center gap-1.5 flex-wrap">
+                          <span>{parseLocalizedName(item.name, isArabic)}</span>
+                          {item.color && (
+                            <span
+                              className="w-3 h-3 rounded-full border border-black/10 inline-block shrink-0 shadow-2xs"
+                              style={{ backgroundColor: item.color.colorCode || "#000" }}
+                              title={item.color.name?.ar || item.color.name?.en || ""}
+                            />
+                          )}
+                        </p>
+                        <p className="text-xs text-slate-500">
+                          {item.quantity} x {formatMoney(item.price)}
+                        </p>
+                      </div>
                     </div>
-                    <p className="text-sm font-black text-indigo-600 dark:text-indigo-400">
+                    <p className="text-sm font-black text-indigo-600 dark:text-indigo-400 shrink-0">
                       {formatMoney(item.price * item.quantity)}
                     </p>
                   </div>
@@ -1299,12 +1369,21 @@ export default function ProfilePage({
                   </strong>{" "}
                   {selectedOrderDetails.customer?.phone}
                 </p>
-                {selectedOrderDetails.paymentMethodName && (
-                  <p className="text-sm text-slate-700 dark:text-slate-300">
-                    <strong className="text-slate-900 dark:text-white">
-                      {isArabic ? "طريقة الدفع:" : "Payment method:"}
-                    </strong>{" "}
-                    {selectedOrderDetails.paymentMethodName}
+                <p className="text-sm text-slate-700 dark:text-slate-300">
+                  <strong className="text-slate-900 dark:text-white">
+                    {isArabic ? "طريقة الدفع:" : "Payment method:"}
+                  </strong>{" "}
+                  {isCashOnDeliveryOrder(selectedOrderDetails)
+                    ? (isArabic ? "دفع عند الاستلام (COD)" : "Cash on delivery (COD)")
+                    : selectedOrderDetails.paymentMethodName ||
+                      selectedOrderDetails.paymentMethod ||
+                      (isArabic ? "أونلاين" : "Online")}
+                </p>
+                {isCashOnDeliveryOrder(selectedOrderDetails) && (
+                  <p className="text-xs font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800/60 p-2.5 rounded-xl">
+                    {isArabic
+                      ? "✓ تم تسجيل الطلب بنجاح، ويتم السداد نقداً عند استلام الشحنة."
+                      : "✓ Order placed successfully. Payment will be collected in cash upon delivery."}
                   </p>
                 )}
                 <p className="text-sm text-slate-700 dark:text-slate-300">
@@ -1325,10 +1404,26 @@ export default function ProfilePage({
                 </span>
               </div>
 
-              {["pending", "received", "cancelled"].includes(
-                selectedOrderDetails.status?.toLowerCase(),
-              ) && (
-                <div className="flex flex-col gap-2 mt-4">
+              <div className="flex flex-col gap-2.5 mt-6 border-t border-slate-100 pt-4 dark:border-slate-800">
+                {!isCashOnDeliveryOrder(selectedOrderDetails) &&
+                  (selectedOrderDetails.status === "pending" || selectedOrderDetails.paymentStatus === "pending") && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const ord = selectedOrderDetails;
+                        setSelectedOrderDetails(null);
+                        handleResumePayment({ ...ord, orderType: "store" });
+                      }}
+                      className="w-full flex items-center justify-center gap-2 py-3 rounded-2xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-sm shadow-md transition-colors"
+                    >
+                      <CreditCard className="w-4 h-4" />
+                      <span>{isArabic ? "استكمال الدفع أونلاين" : "Complete Payment Online"}</span>
+                    </button>
+                )}
+
+                {["pending", "received", "cancelled"].includes(
+                  selectedOrderDetails.status?.toLowerCase(),
+                ) && (
                   <button
                     onClick={() => handleDeleteOrder(selectedOrderDetails._id)}
                     disabled={deletingOrder === selectedOrderDetails._id}
@@ -1341,8 +1436,8 @@ export default function ProfilePage({
                     )}
                     {isArabic ? "إلغاء الطلب" : "Cancel Order"}
                   </button>
-                </div>
-              )}
+                )}
+              </div>
             </div>
           </div>
         </div>

@@ -1,11 +1,31 @@
 import { toast as hotToast } from "react-hot-toast";
 
+import React from "react";
+
 const messageCounts = new Map();
 const messageTimeouts = new Map();
 
-function show(msg, opts, method) {
-  const key = typeof msg === 'string' ? msg : 'custom';
-  if (key === 'custom') {
+function extractMessage(msg) {
+  if (typeof msg === "string") return msg;
+  if (!msg) return "";
+  if (typeof msg === "object") {
+    if (React.isValidElement(msg)) return msg;
+    if (typeof msg.message === "string") return msg.message;
+    if (typeof msg.error === "string") return msg.error;
+    if (msg.error && typeof msg.error.message === "string") return msg.error.message;
+    try {
+      return JSON.stringify(msg);
+    } catch {
+      return String(msg);
+    }
+  }
+  return String(msg);
+}
+
+function show(rawMsg, opts, method) {
+  const msg = extractMessage(rawMsg);
+  const key = typeof msg === "string" ? msg : "custom";
+  if (key === "custom") {
      return method ? hotToast[method](msg, opts) : hotToast(msg, opts);
   }
 

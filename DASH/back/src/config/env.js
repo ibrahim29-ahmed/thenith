@@ -31,6 +31,11 @@ const envSchema = z.object({
   CLOUDINARY_CLOUD_NAME: z.string().default(""),
   CLOUDINARY_API_KEY: z.string().default(""),
   CLOUDINARY_API_SECRET: z.string().default(""),
+  FAWATERAK_ENV: z.string().default("test"),
+  FAWATERAK_CLIENT_ID: z.string().default(""),
+  FAWATERAK_CLIENT_SECRET: z.string().default(""),
+  FAWATERAK_API_KEY: z.string().default(""),
+  FAWATERAK_BASE_URL: z.string().default("https://staging.fawaterk.com"),
 });
 
 const parsed = envSchema.safeParse(process.env);

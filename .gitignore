@@ -1,0 +1,34 @@
+# Dependencies
+node_modules/
+.npm/
+
+# Builds & Outputs
+dist/
+dev-dist/
+build/
+coverage/
+
+# Environment Variables
+.env
+.env.*
+!.env.example
+
+# Large Archives & Binaries
+*.rar
+*.zip
+*.tar
+*.tar.gz
+*.7z
+site.rar
+
+# Editor & System Files
+.DS_Store
+*.log
+*.tmp
+*.temp
+.vscode/
+.idea/
+
+# Agent & Scratch Files
+.agent/
+check_pay_products.mjs

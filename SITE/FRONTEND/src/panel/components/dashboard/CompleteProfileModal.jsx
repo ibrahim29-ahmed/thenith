@@ -53,11 +53,12 @@ export default function CompleteProfileModal({
       };
       if (name.trim()) payload.name = name.trim();
 
-      const { data } = await apiClient.patch("/auth/me", payload, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
+      const headers = token ? { Authorization: `Bearer ${token}` } : {};
+
+      await Promise.allSettled([
+        apiClient.patch("/auth/me", payload, { headers }),
+        apiClient.patch("/panel/profile", payload, { headers }),
+      ]);
 
       const updatedUser = {
         ...(currentUser || {}),

@@ -5,6 +5,7 @@ import PhysicalCard, {
 import NfcSecurity from "../models/NfcSecurity.js";
 import CardBatch from "../models/CardBatch.js";
 import CardActivityLog from "../models/CardActivityLog.js";
+import SmartProduct from "../models/SmartProduct.js";
 import User from "../models/User.js";
 import Card from "../models/Card.js";
 import _idGenerator from "../util/idGenerator.js";
@@ -23,15 +24,29 @@ const { generatePublicId } = _idGenerator;
 // Helper to find card by ObjectId, cardId, or publicId
 async function findCardByIdentifier(identifier) {
   if (!identifier) return null;
+  const trimmed = String(identifier).trim();
   let card = null;
-  if (/^[0-9a-fA-F]{24}$/.test(identifier)) {
-    card = await PhysicalCard.findById(identifier);
+  if (/^[0-9a-fA-F]{24}$/.test(trimmed)) {
+    card = await PhysicalCard.findById(trimmed);
   }
   if (!card) {
+    let extracted = trimmed;
+    try {
+      if (/^https?:\/\//i.test(trimmed)) {
+        const u = new URL(trimmed);
+        const parts = u.pathname.split("/").filter(Boolean);
+        if (parts.length > 0) extracted = parts[parts.length - 1];
+      }
+    } catch {}
+
     card = await PhysicalCard.findOne({
       $or: [
-        { cardId: identifier.toUpperCase() },
-        { publicId: identifier },
+        { cardId: trimmed.toUpperCase() },
+        { cardId: extracted.toUpperCase() },
+        { publicId: trimmed },
+        { publicId: extracted },
+        { cardUrl: trimmed },
+        { targetUrl: trimmed },
       ],
     });
   }
@@ -62,12 +77,28 @@ export const getCards = async (req, res, next) => {
       query.$or = [
         { cardId: { $regex: s, $options: "i" } },
         { publicId: { $regex: s, $options: "i" } },
+        { name: { $regex: s, $options: "i" } },
+        { orderNumber: { $regex: s, $options: "i" } },
+        { productName: { $regex: s, $options: "i" } },
+        { targetUrl: { $regex: s, $options: "i" } },
+        { cardUrl: { $regex: s, $options: "i" } },
       ];
     }
 
     if (status) query.status = status;
     if (color) query.color = color;
     if (cardType) query.cardType = cardType;
+    const { productType, smartProductId, orderOnly, isPrinting, operationalStatus } = req.query;
+    if (productType) query.productType = productType;
+    if (smartProductId) query.smartProductId = smartProductId;
+    if (orderOnly === "true") {
+      query.orderNumber = { $exists: true, $ne: null };
+    }
+    if (operationalStatus !== undefined && operationalStatus !== "") {
+      query.operationalStatus = operationalStatus;
+    } else if (isPrinting !== undefined && isPrinting !== "") {
+      query.isPrinting = isPrinting === "true";
+    }
     if (distributionType) query.distributionType = distributionType;
     if (batchId) query.batchId = batchId;
 
@@ -90,7 +121,9 @@ export const getCards = async (req, res, next) => {
       PhysicalCard.find(query)
         .populate("userId", "name email username avatar publicId")
         .populate("profileId", "name publicId personal.avatar")
+        .populate("orderId", "orderNumber customer totalAmount status")
         .populate("batchId", "batchId name")
+        .populate("smartProductId", "name productType nfcChipType sku quantity")
         .populate("nfcSecurityId")
         .sort(sortObj)
         .skip(skip)
@@ -211,7 +244,10 @@ export const getCardStats = async (req, res, next) => {
 export const createCard = async (req, res, next) => {
   try {
     const {
+      name = "",
       cardType = "standard",
+      productType = "card",
+      smartProductId = null,
       color = "black",
       distributionType = "sale",
       batchId = null,
@@ -235,17 +271,20 @@ export const createCard = async (req, res, next) => {
       if (!existing) isUnique = true;
     }
 
+    const cleanPassword = (cardPassword || "").trim().replace(/\D/g, "");
     const finalPassword =
-      cardPassword && cardPassword.trim().length === 6
-        ? cardPassword.trim().toUpperCase()
-        : generateCardPassword6();
+      cleanPassword.length === 6 ? cleanPassword : generateCardPassword6();
 
     const card = await PhysicalCard.create({
+      name: (name || "").trim(),
       cardId,
       publicId,
       cardPassword: finalPassword,
       targetUrl: (targetUrl || "").trim(),
       cardType,
+      productType,
+      smartProductId: smartProductId || null,
+      nfcChipType,
       color,
       distributionType,
       batchId: batchId || null,
@@ -261,6 +300,13 @@ export const createCard = async (req, res, next) => {
       nfcChipType,
       req.admin?.username || "admin"
     );
+
+    // Update parent smart product count if linked
+    if (smartProductId) {
+      await SmartProduct.findByIdAndUpdate(smartProductId, {
+        $inc: { generatedCardsCount: 1 },
+      }).catch(() => {});
+    }
 
     // Log action in audit log
     await CardActivityLog.create({
@@ -283,6 +329,7 @@ export const createCard = async (req, res, next) => {
 
     const populatedCard = await PhysicalCard.findById(card._id)
       .populate("batchId", "batchId name")
+      .populate("smartProductId", "name productType nfcChipType sku quantity")
       .lean({ virtuals: true });
 
     res.status(201).json({
@@ -302,8 +349,11 @@ export const createCard = async (req, res, next) => {
 export const createBulkCards = async (req, res, next) => {
   try {
     const {
+      name = "",
       quantity = 10,
       cardType = "standard",
+      productType = "card",
+      smartProductId = null,
       color = "black",
       distributionType = "sale",
       batchId = null,
@@ -336,10 +386,14 @@ export const createBulkCards = async (req, res, next) => {
       const cardPassword = generateCardPassword6();
 
       const card = await PhysicalCard.create({
+        name: (name || "").trim(),
         cardId,
         publicId,
         cardPassword,
         cardType,
+        productType,
+        smartProductId: smartProductId || null,
+        nfcChipType,
         color,
         distributionType,
         batchId: batchId || null,
@@ -383,10 +437,65 @@ export const createBulkCards = async (req, res, next) => {
       });
     }
 
+    if (smartProductId && createdCards.length > 0) {
+      await SmartProduct.findByIdAndUpdate(smartProductId, {
+        $inc: { generatedCardsCount: createdCards.length },
+      }).catch(() => {});
+    }
+
     res.status(201).json({
       success: true,
       count: createdCards.length,
       cards: createdCards,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// ── 4.1. Bulk Update Cards Operational Status ─────────────────────────────────
+export const updateBulkCardsStatus = async (req, res, next) => {
+  try {
+    const { cardIds, operationalStatus } = req.body;
+    if (!Array.isArray(cardIds) || cardIds.length === 0) {
+      return res.status(400).json({ error: "يجب تحديد كارت واحد على الأقل" });
+    }
+
+    const nextStatus = operationalStatus || "";
+    const isPrinting = nextStatus === "in_printing";
+
+    const updateFields = {
+      operationalStatus: nextStatus,
+      isPrinting,
+    };
+    if (isPrinting) {
+      updateFields.printingStartedAt = new Date();
+    }
+
+    const result = await PhysicalCard.updateMany(
+      { _id: { $in: cardIds } },
+      { $set: updateFields }
+    );
+
+    try {
+      await CardActivityLog.create({
+        action: "CARDS_BULK_STATUS_UPDATED",
+        actorType: "admin",
+        actorId: req.admin?.username || "admin",
+        actorIp: req.ip,
+        status: "success",
+        message: `Bulk operational status set to "${nextStatus || "none"}" for ${cardIds.length} cards`,
+        safeMetadata: { cardIds, operationalStatus: nextStatus },
+      });
+    } catch (logErr) {
+      console.warn("CardActivityLog bulk update failed:", logErr.message);
+    }
+
+    res.json({
+      success: true,
+      message: `تم تحديث حالة ${result.modifiedCount || cardIds.length} كارت بنجاح`,
+      modifiedCount: result.modifiedCount,
+      operationalStatus: nextStatus,
     });
   } catch (error) {
     next(error);
@@ -488,7 +597,7 @@ export const updateCardDetails = async (req, res, next) => {
     const card = await findCardByIdentifier(req.params.id);
     if (!card) return res.status(404).json({ error: "الكارت غير موجود" });
 
-    const { targetUrl, color, cardType, distributionType, batchId } = req.body;
+    const { targetUrl, color, cardType, distributionType, batchId, isPrinting, operationalStatus } = req.body;
 
     if (targetUrl !== undefined) {
       card.targetUrl = (targetUrl || "").trim();
@@ -502,6 +611,15 @@ export const updateCardDetails = async (req, res, next) => {
     if (cardType) card.cardType = cardType;
     if (distributionType) card.distributionType = distributionType;
     if (batchId !== undefined) card.batchId = batchId || null;
+    if (operationalStatus !== undefined) {
+      card.operationalStatus = operationalStatus || "";
+      card.isPrinting = operationalStatus === "in_printing";
+      card.printingStartedAt = card.isPrinting ? (card.printingStartedAt || new Date()) : null;
+    } else if (isPrinting !== undefined) {
+      card.isPrinting = Boolean(isPrinting);
+      card.operationalStatus = card.isPrinting ? "in_printing" : "";
+      card.printingStartedAt = card.isPrinting ? (card.printingStartedAt || new Date()) : null;
+    }
 
     await card.save();
 
@@ -518,6 +636,7 @@ export const updateCardDetails = async (req, res, next) => {
           cardId: card.cardId,
           targetUrl: card.targetUrl,
           hasPassword: Boolean(card.cardPassword),
+          isPrinting: card.isPrinting,
         },
       });
     } catch (logErr) {
@@ -601,12 +720,19 @@ export const deleteCard = async (req, res, next) => {
 
     const cardInternalId = card.cardId;
     const cardMongoId = card._id;
+    const parentProductId = card.smartProductId;
 
     await Promise.all([
       NfcSecurity.deleteOne({ cardId: cardMongoId }),
       CardActivityLog.deleteMany({ cardId: cardMongoId }),
       PhysicalCard.deleteOne({ _id: cardMongoId }),
     ]);
+
+    if (parentProductId) {
+      await SmartProduct.findByIdAndUpdate(parentProductId, {
+        $inc: { generatedCardsCount: -1 },
+      }).catch(() => {});
+    }
 
     res.json({
       success: true,
@@ -833,6 +959,7 @@ export default {
   getCardStats,
   createCard,
   createBulkCards,
+  updateBulkCardsStatus,
   getCardDetails,
   updateCardStatus,
   updateCardDetails,

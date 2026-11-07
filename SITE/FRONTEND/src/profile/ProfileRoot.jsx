@@ -1,6 +1,6 @@
 import { useState, Suspense, lazy } from "react";
 import { AnimatePresence } from "motion/react";
-import { Briefcase, Link2, User, Calendar } from "lucide-react";
+import { Calendar, Link2, MessageSquare, User } from "lucide-react";
 
 import ProfileActivityTracker from "./components/analytics/ProfileActivityTracker.jsx";
 import AppFooter from "./components/layout/AppFooter.jsx";
@@ -30,7 +30,7 @@ export default function App() {
   const allTabs = [
     { id: "about", label: t.aboutTab, icon: User },
     { id: "links", label: t.linksTab, icon: Link2 },
-    { id: "hire", label: t.hireTab, icon: Briefcase },
+    { id: "hire", label: t.hireTab, icon: MessageSquare },
     { id: "booking", label: t.bookingTab || "Book", icon: Calendar },
   ];
 

@@ -5,6 +5,10 @@ import CustomerService from "../models/CustomerService.js";
 import ChatMessage from "../models/ChatMessage.js";
 import _socketService9620 from "../services/socketService.js";
 const { getIO, getRoomTarget } = _socketService9620;
+import {
+  broadcastNewMessage,
+  broadcastTicketUpdate,
+} from "../services/supportBroadcast.js";
 import _env4335 from "../config/env.js";
 const { env } = _env4335;
 
@@ -103,12 +107,14 @@ const initCustomerService = async (req, res, next) => {
     }
 
     if (isNew) {
-      await ChatMessage.create({
+      const welcomeMsg = await ChatMessage.create({
         customerService: customerService._id,
         senderModel: "Admin",
         senderId: "admin",
         content: `👋 مرحباً ${customerService.name} إذا كانت لديك أي أسئلة. نحن هنا لمساعدتك!`,
       });
+      broadcastNewMessage(welcomeMsg, customerService).catch(() => {});
+      broadcastTicketUpdate(customerService, false).catch(() => {});
     }
 
     res.json(sanitizeCustomerService(customerService));
@@ -215,11 +221,15 @@ const sendMessage = async (req, res, next) => {
 
     const senderModel = req.user ? "User" : "Guest";
     const senderId = req.user ? req.user.id : guestId;
+    const senderName = req.user
+      ? (req.user.name || req.user.username || "العميل")
+      : (customerService.name || "زائر");
 
     const message = await ChatMessage.create({
       customerService: customerService._id,
       senderModel,
       senderId,
+      senderName,
       content,
     });
 
@@ -228,9 +238,78 @@ const sendMessage = async (req, res, next) => {
     if (customerService.status === "resolved") customerService.status = "open";
     await customerService.save();
 
+    await broadcastNewMessage(message, customerService).catch(() => {});
+
     res.json(sanitizeChatMessage(message));
   } catch (error) {
     next(error);
+  }
+};
+
+// ── POST /api/support/internal-event ──────────────────────────────────────────
+const handleInternalEvent = async (req, res) => {
+  try {
+    const secret = req.headers["x-internal-secret"];
+    if (!secret || secret !== env.ADMIN_JWT_SECRET) {
+      return res.status(403).json({ error: "Unauthorized" });
+    }
+
+    const { type, message, customerService, sysMessage } = req.body;
+    const io = getIO();
+    if (!io) return res.json({ ok: true });
+
+    const convId = (
+      message?.customerService ||
+      customerService?._id ||
+      sysMessage?.customerService ||
+      ""
+    ).toString();
+
+    if (type === "newMessage" && message) {
+      if (convId) {
+        io.to(`customerService_${convId}`).emit("newMessage", message);
+        io.to(`ticket_${convId}`).emit("newMessage", message);
+        io.to(convId).emit("newMessage", message);
+      }
+
+      let userId = customerService?.user;
+      let guestId = customerService?.guestId;
+
+      if ((!userId || !guestId) && convId) {
+        try {
+          const csDoc = await CustomerService.findById(convId).select("user guestId");
+          if (csDoc) {
+            if (csDoc.user) userId = csDoc.user.toString();
+            if (csDoc.guestId) guestId = csDoc.guestId;
+          }
+        } catch (e) {}
+      }
+
+      if (userId) {
+        io.to(`user_${userId}`).emit("newMessage", message);
+      }
+      if (guestId) {
+        io.to(`guest_${guestId}`).emit("newMessage", message);
+      }
+    } else if (type === "statusChanged" && customerService) {
+      if (convId) {
+        io.to(`customerService_${convId}`).emit("ticketStatusChanged", customerService);
+        io.to(`ticket_${convId}`).emit("ticketStatusChanged", customerService);
+        io.to(`customerService_${convId}`).emit("customerServiceStatusChanged", customerService);
+        if (sysMessage) {
+          io.to(`customerService_${convId}`).emit("newMessage", sysMessage);
+          io.to(`ticket_${convId}`).emit("newMessage", sysMessage);
+          io.to(convId).emit("newMessage", sysMessage);
+        }
+      }
+      if (customerService.user) {
+        io.to(`user_${customerService.user}`).emit("ticketStatusChanged", customerService);
+      }
+    }
+
+    res.json({ ok: true });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
   }
 };
 
@@ -239,4 +318,5 @@ export default {
   initCustomerService,
   getMessages,
   sendMessage,
+  handleInternalEvent,
 };

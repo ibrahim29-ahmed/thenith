@@ -93,6 +93,30 @@ const webhookRateLimit = rateLimit({
   },
 });
 
+const publicProfileRateLimit = rateLimit({
+  windowMs: 60 * 1000,
+  limit: 100,
+  standardHeaders: "draft-8",
+  legacyHeaders: false,
+  message: {
+    error: {
+      code: "TOO_MANY_REQUESTS",
+      message: "Too many profile requests, please try again in a minute",
+    },
+  },
+});
+
+export {
+  authRateLimit,
+  usernameRateLimit,
+  publicRequestRateLimit,
+  supportRateLimit,
+  analyticsRateLimit,
+  adminLoginRateLimit,
+  webhookRateLimit,
+  publicProfileRateLimit,
+};
+
 export default {
   authRateLimit,
   usernameRateLimit,
@@ -101,4 +125,5 @@ export default {
   analyticsRateLimit,
   adminLoginRateLimit,
   webhookRateLimit,
+  publicProfileRateLimit,
 };

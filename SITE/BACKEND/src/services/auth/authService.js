@@ -36,6 +36,9 @@ function publicUser(user) {
     role: user.role,
     username: user.username,
     isEmailVerified: user.isEmailVerified,
+    savedCard: user.savedCard || null,
+    referralCode: user.referralCode || "",
+    paymentPlusActive: Boolean(user.paymentPlusActive),
   };
 }
 

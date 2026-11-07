@@ -30,8 +30,12 @@ import {
 } from "lucide-react";
 
 import GlobalLogo from "../components/GlobalLogo.jsx";
+import MainFooter from "../components/MainFooter.jsx";
+import ContactSection from "../components/landing/ContactSection.jsx";
 import { useGlobalLanguage } from "../context/GlobalLanguageContext.jsx";
+import { useSiteSettings } from "../context/SiteSettingsContext.jsx";
 import { getLandingPageSeoData, applyPageSeo } from "../utils/seo.js";
+import { renderRichText } from "../utils/richText.jsx";
 
 const LANDING_CARD_IMAGES = (import.meta.env.VITE_LANDING_CARD_IMAGES || "")
   .split(",")
@@ -183,6 +187,8 @@ const DeviceShowcase = () => {
 export default function LandingPage() {
   const { isAuthenticated, user, isInitializing } = useAuth();
   const { t, language } = useGlobalLanguage();
+  const { settings } = useSiteSettings();
+  const siteName = settings?.site_name || "Thenith";
 
   if (isInitializing) {
     return null;
@@ -217,14 +223,14 @@ export default function LandingPage() {
   }, [isCarouselPaused]);
 
   useEffect(() => {
-    applyPageSeo(getLandingPageSeoData(language));
+    applyPageSeo({ pageKey: "home", ...getLandingPageSeoData(language, siteName) });
     const handleScroll = () => setIsScrolled(window.scrollY > 20);
     window.addEventListener("scroll", handleScroll);
 
     return () => {
       window.removeEventListener("scroll", handleScroll);
     };
-  }, [language]);
+  }, [language, siteName]);
 
   return (
     <div
@@ -505,7 +511,6 @@ export default function LandingPage() {
                         <UserPlus className="w-4 h-4 text-slate-600 shrink-0" />
                         <span>
                           {t("landing.phoneMockupSave")}
-                          {t("landing.phoneMockupCall")}
                         </span>
                       </div>
                     </div>
@@ -526,27 +531,13 @@ export default function LandingPage() {
                 <Monitor className="w-8 h-8" />
               </div>
               <h3 className="text-[28px] md:text-[36px] font-bold mb-6 leading-[1.4] text-[#1d1d1f]">
-                {String(t("landing.feature2Title") || "")
-                  .split(/<br\s*\/?>/i)
-                  .map((chunk, i, arr) => (
-                    <React.Fragment key={i}>
-                      {chunk}
-                      {i < arr.length - 1 && <br />}
-                    </React.Fragment>
-                  ))}
+                {renderRichText(t("landing.feature2Title"))}
               </h3>
               <p className="text-base md:text-lg text-[#86868b] font-medium leading-[1.8] mb-5">
-                {t("landing.feature2Subtitle")}
+                {renderRichText(t("landing.feature2Subtitle"))}
               </p>
               <p className="text-base md:text-lg text-[#86868b] font-medium leading-[1.8]">
-                {String(t("landing.feature2Desc") || "")
-                  .split(/<br\s*\/?>/i)
-                  .map((chunk, i, arr) => (
-                    <React.Fragment key={i}>
-                      {chunk}
-                      {i < arr.length - 1 && <br />}
-                    </React.Fragment>
-                  ))}
+                {renderRichText(t("landing.feature2Desc"))}
               </p>
             </FadeIn>
           </div>
@@ -679,7 +670,7 @@ export default function LandingPage() {
               {t("landing.cardSubtitle")}
             </p>
             <Link
-              to="/products"
+              to={isAuthenticated ? "/u/products" : "/products"}
               className="group text-base font-bold text-white border-b border-white pb-1 hover:text-gray-300 hover:border-gray-300 transition-all inline-flex items-center gap-2"
             >
               <ArrowRight className="w-5 h-5 rtl:rotate-180 rtl:group-hover:-translate-x-1 ltr:group-rtl:hover:-translate-x-1 ltr:hover:translate-x-1 transition-transform" />{" "}
@@ -696,7 +687,7 @@ export default function LandingPage() {
               <div className="hidden sm:flex relative w-full h-[450px] items-center justify-center max-w-full">
                 {LANDING_CARD_IMAGES.map((src, i) => (
                   <Link
-                    to="/products"
+                    to={isAuthenticated ? "/u/products" : "/products"}
                     key={i}
                     style={{
                       zIndex: (i + 1) * 10,
@@ -738,7 +729,7 @@ export default function LandingPage() {
               >
                 {LANDING_CARD_IMAGES.map((src, i) => (
                   <Link
-                    to="/products"
+                    to={isAuthenticated ? "/u/products" : "/products"}
                     key={i}
                     className="block flex-none w-[80vw] h-[50.6vw] snap-center bg-[#1a1a1c] rounded-2xl ring-1 ring-white/10 shadow-2xl overflow-hidden relative cursor-pointer"
                   >
@@ -908,17 +899,17 @@ export default function LandingPage() {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-16 lg:gap-20">
             {[
               {
-                num: "١",
+                num: "1",
                 title: t("landing.step1Title"),
                 desc: `${t("landing.step1Desc1")}. ${t("landing.step1Desc2")}.`,
               },
               {
-                num: "٢",
+                num: "2",
                 title: t("landing.step2Title"),
                 desc: `${t("landing.step2Desc1")} Thenith ${t("landing.step2Desc2")} (QR) ${t("landing.step2Desc3")}.`,
               },
               {
-                num: "٣",
+                num: "3",
                 title: t("landing.step3Title"),
                 desc: `${t("landing.step3Desc1")} QR${t("landing.step3Desc2")}.`,
               },
@@ -941,6 +932,9 @@ export default function LandingPage() {
         </div>
       </section>
 
+      {/* SECTION: CONTACT US */}
+      <ContactSection language={language} />
+
       {/* SECTION 7: FINAL CTA */}
       <section className="relative z-20 py-32 px-6 bg-[#161618] text-white">
         <div className="max-w-[800px] mx-auto text-center">
@@ -962,76 +956,7 @@ export default function LandingPage() {
       </section>
 
       {/* FOOTER */}
-      <footer className="relative z-10 bg-white/70 backdrop-blur-3xl pt-24 pb-12 px-6 border-t border-white/60">
-        <div className="max-w-[1200px] mx-auto">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-12 mb-24">
-            <div className="col-span-2">
-              <Link
-                to="/"
-                className="mb-6 inline-block hover:scale-105 transition-transform origin-right"
-              >
-                <GlobalLogo className="text-3xl" />
-              </Link>
-              <p className="text-base text-[#86868b] font-medium max-w-sm leading-[1.8]">
-                {t("landing.footerDesc")}
-              </p>
-            </div>
-            <div className="col-span-2 sm:col-span-1">
-              <div className="space-y-5">
-                <h5 className="text-[11px] font-bold uppercase tracking-[0.18em] text-[#1d1d1f]/80">
-                  {t("landing.importantLinks")}
-                </h5>
-                <div className="flex flex-col gap-3 text-base font-medium text-[#86868b]">
-                  <Link
-                    to="/products"
-                    className="flex items-center justify-start gap-2 text-start hover:text-[#1d1d1f] rtl:hover:-translate-x-1 ltr:hover:translate-x-1 transition-all"
-                  >
-                    <span className="inline-block h-1.5 w-1.5 rounded-full bg-[#1d1d1f]/60" />
-                    {t("navbar.products") || (language === "en" ? "Smart Cards & Products" : "البطاقات والمنتجات")}
-                  </Link>
-                  <Link
-                    to="/pricing"
-                    className="flex items-center justify-start gap-2 text-start hover:text-[#1d1d1f] rtl:hover:-translate-x-1 ltr:hover:translate-x-1 transition-all"
-                  >
-                    <span className="inline-block h-1.5 w-1.5 rounded-full bg-[#1d1d1f]/60" />
-                    {t("navbar.pricing") || (language === "en" ? "Plans & Pricing" : "الباقات والأسعار")}
-                  </Link>
-                  <button
-                    onClick={() =>
-                      window.dispatchEvent(new Event("open-support-widget"))
-                    }
-                    className="flex items-center justify-start gap-2 text-start w-full hover:text-[#1d1d1f] rtl:hover:-translate-x-1 ltr:hover:translate-x-1 transition-all"
-                  >
-                    <span className="inline-block h-1.5 w-1.5 rounded-full bg-[#1d1d1f]/60" />
-                    {t("navbar.support")}
-                  </button>
-                  <Link
-                    to="/suggest"
-                    className="flex items-center justify-start gap-2 text-start hover:text-[#1d1d1f] rtl:hover:-translate-x-1 ltr:hover:translate-x-1 transition-all"
-                  >
-                    <span className="inline-block h-1.5 w-1.5 rounded-full bg-[#1d1d1f]/60" />
-                    {t("navbar.suggestFeature")}
-                  </Link>
-                  <Link
-                    to="#"
-                    className="flex items-center justify-start gap-2 text-start hover:text-[#1d1d1f] rtl:hover:-translate-x-1 ltr:hover:translate-x-1 transition-all"
-                  >
-                    <span className="inline-block h-1.5 w-1.5 rounded-full bg-[#1d1d1f]/60" />
-                    {t("landing.privacy")}
-                  </Link>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div className="flex flex-col md:flex-row justify-between items-center pt-8 border-t border-white/50 text-sm font-medium text-[#86868b]">
-            <div>
-              &copy; {new Date().getFullYear()} Thenith.{" "}
-              {t("landing.copyright")}.
-            </div>
-          </div>
-        </div>
-      </footer>
+      <MainFooter />
     </div>
   );
 }

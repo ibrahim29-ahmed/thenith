@@ -45,8 +45,36 @@ export default function PendingPaymentAlert() {
           );
         };
 
-        const newSubs = (data.subscriptions || []).filter((s) => !isCard(s));
-        const newOrders = (data.orders || []).filter((o) => !isCard(o));
+        const isTxExpired = (item) => {
+          const tx = item?.transaction || item;
+          if (!tx) return false;
+          if (tx.status === "expired" || tx.status === "cancelled" || tx.status === "failed") return true;
+          const cTime = new Date(tx.fawaterakCreatedAt || tx.createdAt || Date.now()).getTime();
+          const isWallet = Boolean(
+            tx.paymentMethodId === 4 ||
+            tx.paymentData?.mobileWalletNumber ||
+            tx.paymentData?.meezaQrCode ||
+            tx.paymentData?.isoQr ||
+            /wallet|محفظ|meeza|كاش/i.test(tx.paymentMethodName || "")
+          );
+          if (isWallet) {
+            const maxWallet = (!isNaN(cTime) ? cTime : Date.now()) + 5 * 60 * 1000;
+            return Date.now() > maxWallet;
+          }
+          const expDate =
+            tx.fawaterakExpireDate ||
+            tx.paymentData?.fawaterakExpireDate ||
+            tx.paymentData?.expirationTime ||
+            tx.paymentData?.expireDate;
+          if (expDate) {
+            const expTime = new Date(expDate).getTime();
+            if (!isNaN(expTime)) return Date.now() > expTime;
+          }
+          return false;
+        };
+
+        const newSubs = (data.subscriptions || []).filter((s) => !isCard(s) && !isTxExpired(s));
+        const newOrders = (data.orders || []).filter((o) => !isCard(o) && !isTxExpired(o));
 
         // If this is a background poll and a payment was resolved (array length decreased)
         if (isPolling) {
@@ -64,44 +92,16 @@ export default function PendingPaymentAlert() {
                   ),
               ) || prevSubs[0];
 
-            const targetId = resolvedSub?._id || "";
-            const targetIntent =
-              resolvedSub?.transaction?.intentKey || targetId;
-
             const newState = { subscriptions: newSubs, orders: newOrders };
             pendingRef.current = newState;
             setPending(newState);
-
-            navigate(
-              `/payment/success?type=subscription&id=${targetId}&intentKey=${targetIntent}`,
-              { replace: true },
-            );
             return;
           }
 
           if (newOrders.length < prevOrders.length) {
-            const resolvedOrder =
-              prevOrders.find(
-                (oldOrd) =>
-                  !newOrders.some(
-                    (o) =>
-                      (o._id || o.transaction?.intentKey) ===
-                      (oldOrd._id || oldOrd.transaction?.intentKey),
-                  ),
-              ) || prevOrders[0];
-
-            const targetId = resolvedOrder?._id || "";
-            const targetIntent =
-              resolvedOrder?.transaction?.intentKey || targetId;
-
             const newState = { subscriptions: newSubs, orders: newOrders };
             pendingRef.current = newState;
             setPending(newState);
-
-            navigate(
-              `/payment/success?type=order&id=${targetId}&intentKey=${targetIntent}`,
-              { replace: true },
-            );
             return;
           }
         }
@@ -118,6 +118,10 @@ export default function PendingPaymentAlert() {
 
   useEffect(() => {
     fetchPending();
+    const interval = setInterval(() => {
+      fetchPending(true);
+    }, 8000);
+    return () => clearInterval(interval);
   }, []);
 
   const handleRefresh = async () => {
@@ -255,13 +259,20 @@ export default function PendingPaymentAlert() {
 
                 <button
                   onClick={() => {
-                    const params = new URLSearchParams({
-                      type: "subscription",
-                      planId: sub.planId?._id || sub.planId,
-                      id: sub._id,
-                      intentKey: sub.transaction?.intentKey,
-                      billingPeriod: sub.billingPeriod || sub.transaction?.paymentData?.targetBillingPeriod || "monthly",
-                    });
+                    const params = new URLSearchParams();
+                    params.set("type", "subscription");
+                    const pId = sub.planId?._id || sub.planId;
+                    if (pId) params.set("planId", pId);
+                    params.set("id", sub._id);
+                    const intent = sub.transaction?.intentKey || sub.intentKey;
+                    if (intent && intent !== "undefined" && intent !== "null") {
+                      params.set("intentKey", intent);
+                    }
+                    const period =
+                      sub.billingPeriod ||
+                      sub.transaction?.paymentData?.targetBillingPeriod ||
+                      "monthly";
+                    params.set("billingPeriod", period);
                     window.location.href = `/payment?${params.toString()}`;
                   }}
                   className="w-1/2 sm:w-auto bg-amber-500 hover:bg-amber-600 text-white px-5 py-2.5 rounded-xl text-sm font-bold transition-colors flex items-center justify-center gap-2"
@@ -335,12 +346,14 @@ export default function PendingPaymentAlert() {
 
               <button
                 onClick={() => {
-                  const params = new URLSearchParams({
-                    type: "order",
-                    orderId: order._id,
-                    id: order._id,
-                    intentKey: order.transaction?.intentKey,
-                  });
+                  const params = new URLSearchParams();
+                  params.set("type", "order");
+                  params.set("orderId", order._id);
+                  params.set("id", order._id);
+                  const intent = order.transaction?.intentKey || order.intentKey;
+                  if (intent && intent !== "undefined" && intent !== "null") {
+                    params.set("intentKey", intent);
+                  }
                   window.location.href = `/payment?${params.toString()}`;
                 }}
                 className="w-1/2 sm:w-auto bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2.5 rounded-xl text-sm font-bold transition-colors flex items-center justify-center gap-2"

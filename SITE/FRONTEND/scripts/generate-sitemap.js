@@ -14,7 +14,24 @@ import http from "http";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const PRODUCTION_DOMAIN = "https://thenith.com";
+function loadEnvSiteUrl() {
+  const envVal = process.env.VITE_SITE_URL;
+  if (envVal && !envVal.includes("localhost")) return envVal;
+  try {
+    const envPath = path.resolve(__dirname, "../.env");
+    if (fs.existsSync(envPath)) {
+      const content = fs.readFileSync(envPath, "utf-8");
+      const match = content.match(/^VITE_SITE_URL\s*=\s*(.+)$/m);
+      if (match) {
+        const val = match[1].trim().replace(/^['"]|['"]$/g, "");
+        if (!val.includes("localhost")) return val;
+      }
+    }
+  } catch {}
+  return "https://thenith.com";
+}
+
+const PRODUCTION_DOMAIN = loadEnvSiteUrl().replace(/\/+$/, "");
 const OUTPUT_PUBLIC_PATH = path.resolve(__dirname, "../public/sitemap.xml");
 const OUTPUT_DIST_PATH = path.resolve(__dirname, "../dist/sitemap.xml");
 

@@ -75,3 +75,10 @@ button:active {
 .transition-all-300 {
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
+
+
+/* Force all numbers to render in English / Latin numerals (0-9) */
+*, *::before, *::after {
+  font-variant-numeric: lining-nums tabular-nums;
+  font-feature-settings: "lnum" 1, "tnum" 1;
+}

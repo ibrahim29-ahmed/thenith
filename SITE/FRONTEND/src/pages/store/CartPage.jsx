@@ -8,6 +8,7 @@ import { formatMoney } from "./storeApi.js";
 import { useAuth } from "../../context/AuthContext.jsx";
 import api from "../../api/index.js";
 import { toast } from "../../util/toast";
+import MainFooter from "../../components/MainFooter.jsx";
 
 export default function CartPage() {
   const { t, language } = useGlobalLanguage();
@@ -114,7 +115,16 @@ export default function CartPage() {
       );
       return;
     }
-    navigate("/checkout");
+    if (!isAuthenticated) {
+      toast.error(
+        isArabic
+          ? "يجب تسجيل الدخول أو إنشاء حساب أولاً لمتابعة الشراء"
+          : "You must log in or create an account to proceed to checkout"
+      );
+      navigate("/login?returnTo=/u/checkout");
+      return;
+    }
+    navigate("/u/checkout");
   };
 
   const handleRemoveItem = async (cartItemId, itemName) => {
@@ -157,8 +167,8 @@ export default function CartPage() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900 font-sans selection:bg-indigo-500/30" dir={isArabic ? "rtl" : "ltr"}>
-      <main className="max-w-[1200px] mx-auto px-6 py-20">
+    <div className="min-h-screen flex flex-col bg-slate-50 text-slate-900 font-sans selection:bg-indigo-500/30" dir={isArabic ? "rtl" : "ltr"}>
+      <main className="flex-1 max-w-[1200px] w-full mx-auto px-6 py-20 pb-28 md:pb-36">
         <h1 className="text-3xl md:text-4xl font-bold mb-8 text-slate-900">
           {t("store.cartTitle")}
         </h1>
@@ -223,7 +233,7 @@ export default function CartPage() {
             </h2>
             <p className="text-slate-500 mb-8">{t("store.noProductsAdded")}.</p>
             <Link
-              to="/products"
+              to={isAuthenticated ? "/u/products" : "/products"}
               className="bg-slate-900 hover:bg-indigo-600 text-white px-8 py-3 rounded-full font-bold transition-all shadow-md hover:shadow-lg"
             >
               {t("store.browseProducts")}
@@ -238,7 +248,7 @@ export default function CartPage() {
                   className="bg-white rounded-2xl p-4 sm:p-6 border border-slate-200 shadow-sm flex flex-col sm:flex-row items-center gap-6"
                 >
                   <img
-                    src={item.image}
+                    src={item.customDesign?.image || item.selectedImage || item.image}
                     alt={item.name}
                     className="w-32 h-20 object-cover rounded-xl shadow-sm border border-slate-100"
                   />
@@ -253,6 +263,28 @@ export default function CartPage() {
                         </span>
                       )}
                     </div>
+                    {item.color && (
+                      <div className="flex items-center justify-center sm:justify-start gap-1.5 my-1">
+                        <span
+                          className="w-3.5 h-3.5 rounded-full border border-black/15 shrink-0"
+                          style={{
+                            backgroundColor:
+                              (typeof item.color === "object"
+                                ? item.color.colorCode
+                                : item.color) || "#000",
+                          }}
+                        />
+                        <span className="text-xs font-bold text-slate-600">
+                          {typeof item.color === "object"
+                            ? typeof item.color.name === "object"
+                              ? item.color.name[language] ||
+                                item.color.name.ar ||
+                                item.color.name.en
+                              : item.color.name || item.color.colorCode
+                            : String(item.color)}
+                        </span>
+                      </div>
+                    )}
                     {item.customDesign && (
                       <p className="text-xs text-slate-500 mb-1">
                         <span className="font-semibold text-slate-700">{item.customDesign.name}</span>
@@ -348,6 +380,7 @@ export default function CartPage() {
           </div>
         )}
       </main>
+      <MainFooter />
     </div>
   );
 }

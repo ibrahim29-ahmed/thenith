@@ -45,6 +45,8 @@ export const defaultDashboardData = {
     phone: "",
     address: "",
     orders: [],
+    paymentMethods: [],
+    activePaymentMethodId: null,
   },
   cards: [], // Default is completely empty, relies on backend
   metrics: [
@@ -101,6 +103,10 @@ export function normalizeDashboardData(data) {
     owner: {
       ...defaultDashboardData.owner,
       ...(source.owner || {}),
+      paymentMethods: source.owner?.paymentMethods || [],
+      activePaymentMethodId:
+        source.owner?.activePaymentMethodId ||
+        (source.owner?.paymentMethods?.[0]?.id || null),
     },
     cards: Array.isArray(source.cards)
       ? source.cards.map((c, i) => normalizeCard(c, i))

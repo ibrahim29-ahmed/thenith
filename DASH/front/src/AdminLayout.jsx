@@ -22,7 +22,7 @@ export default function AdminLayout() {
 
   return (
     <div
-      
+
       className="min-h-screen bg-slate-50 flex text-slate-800"
       style={{ fontFamily: '"Rubik", sans-serif' }}
     >
@@ -50,11 +50,10 @@ export default function AdminLayout() {
                 key={item.id}
                 to={item.path}
                 end={item.path === "/dashboard"}
-                className={`flex items-center gap-3 px-4 py-3 rounded-xl font-medium transition-all ${
-                  isActive
+                className={`flex items-center gap-3 px-4 py-3 rounded-xl font-medium transition-all ${isActive
                     ? "bg-indigo-600 text-white shadow-lg shadow-indigo-500/20"
                     : "text-slate-400 hover:bg-white/5 hover:text-white"
-                }`}
+                  }`}
               >
                 <Icon
                   className={`w-5 h-5 ${isActive ? "text-white" : "text-slate-400"}`}
@@ -81,11 +80,11 @@ export default function AdminLayout() {
         {/* TOP HEADER */}
         <header className="h-20 bg-white border-b border-slate-200 px-8 flex items-center justify-between sticky top-0 z-40">
           <div className="relative w-96">
-            <Search className="w-5 h-5 text-slate-400 absolute end-4 top-1/2 -translate-y-1/2" />
+            <Search className="w-4 h-4 text-slate-400 absolute end-3.5 top-1/2 -translate-y-1/2" />
             <input
               type="text"
               placeholder="ابحث عن مستخدم، اشتراك، أو قسم..."
-              className="w-full bg-slate-100 border-none rounded-xl py-2.5 pe-12 ps-4 text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
+              className="w-full bg-slate-50 border border-slate-200/90 rounded-xl py-2.5 pe-11 ps-4 text-xs font-semibold text-slate-800 placeholder-slate-400 focus:bg-white focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 outline-none transition-all shadow-xs"
             />
           </div>
 

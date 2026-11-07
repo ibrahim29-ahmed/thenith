@@ -34,6 +34,31 @@ export const dashboardRoutes = {
       `/dashboard/cards/${encodeURIComponent(cardId)}/appointments/${encodeURIComponent(appointmentId)}/read`,
       { method: "PUT" },
     ),
+
+  // Payment Methods
+  getPaymentMethods: () => request("/dashboard/payment-methods"),
+
+  createPaymentMethod: (data) =>
+    request("/dashboard/payment-methods", {
+      method: "POST",
+      data,
+    }),
+
+  updatePaymentMethod: (id, data) =>
+    request(`/dashboard/payment-methods/${encodeURIComponent(id)}`, {
+      method: "PUT",
+      data,
+    }),
+
+  setActivePaymentMethod: (id) =>
+    request(`/dashboard/payment-methods/${encodeURIComponent(id)}/active`, {
+      method: "PATCH",
+    }),
+
+  deletePaymentMethod: (id) =>
+    request(`/dashboard/payment-methods/${encodeURIComponent(id)}`, {
+      method: "DELETE",
+    }),
 };
 
 export default dashboardRoutes;

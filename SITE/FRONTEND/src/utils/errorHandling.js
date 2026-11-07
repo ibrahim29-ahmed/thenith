@@ -24,6 +24,8 @@ const messageTranslations = [
     /account_has_pending_payments|cannot delete account while.+(unpaid|pending)/,
     "accountPendingPayments",
   ],
+  [/timeout|timed out|econnaborted/, "timeout"],
+  [/service is unavailable|service unavailable|غير متاحة حالياً|service_unavailable/i, "serviceUnavailable"],
 ];
 
 const statusTranslations = {
@@ -37,11 +39,32 @@ const statusTranslations = {
 };
 
 function getRawMessage(error) {
-  if (typeof error === "string") return error;
-  const data = error?.response?.data;
-  const apiError = data?.error;
-  if (typeof apiError === "string") return apiError;
-  return apiError?.message || data?.message || error?.message || "";
+  let raw = "";
+  if (typeof error === "string") raw = error;
+  else if (error) {
+    const data = error?.response?.data;
+    const apiError = data?.error;
+    if (typeof apiError === "string") raw = apiError;
+    else {
+      const msg = apiError?.message || data?.message || error?.message;
+      if (typeof msg === "string") raw = msg;
+      else if (typeof error?.error === "string") raw = error.error;
+    }
+  }
+
+  if (raw && typeof raw === "string") {
+    // If raw message contains JSON like {"error_message": "..."}, unwrap it
+    const jsonMatch = raw.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      try {
+        const parsed = JSON.parse(jsonMatch[0]);
+        const inner = parsed.error_message || parsed.errorMessage || parsed.message || parsed.data;
+        if (inner && typeof inner === "string") return inner;
+      } catch {}
+    }
+    return raw.replace(/^Fawaterak:\s*/i, "");
+  }
+  return "";
 }
 
 export function getLocalizedErrorMessage(error, language) {
@@ -63,6 +86,15 @@ export function getLocalizedErrorMessage(error, language) {
     return translateError("rateLimited");
   }
 
+  // If there is a direct raw error message from the API, return it directly
+  if (rawMessage) {
+    return rawMessage
+      .replace(/بوابة\s+الدفع/gi, "الخدمة")
+      .replace(/بوابة\s+دفع/gi, "وسيلة دفع")
+      .replace(/payment\s+gateway/gi, "payment service")
+      .trim();
+  }
+
   const translatedMessage = messageTranslations.find(([pattern]) =>
     pattern.test(normalizedMessage),
   );
@@ -71,6 +103,10 @@ export function getLocalizedErrorMessage(error, language) {
   if (/^errors\.[a-zA-Z0-9_.]+$/.test(rawMessage)) {
     const translatedKey = t(`panel.${rawMessage}`);
     if (translatedKey !== rawMessage) return translatedKey;
+  }
+
+  if (code === "ECONNABORTED" || error?.code === "ECONNABORTED") {
+    return translateError("timeout");
   }
 
   if (rawMessage) {

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import {
   Edit2,
   Trash2,
@@ -31,6 +31,7 @@ import {
   updateUser,
   toggleBanUser,
   changeUserPlan,
+  toggleUserPaymentPlus,
   deleteUser,
   fetchPlans,
   fetchUserCards,
@@ -488,7 +489,7 @@ function UserCardsPanel({ user, onBack }) {
             <p>
               تسجيل:{" "}
               {user.createdAt
-                ? new Date(user.createdAt).toLocaleDateString("ar-EG")
+                ? new Date(user.createdAt).toLocaleDateString("ar-EG-u-nu-latn")
                 : "—"}
             </p>
           </div>
@@ -663,9 +664,19 @@ export default function UsersManager() {
     username: "",
   });
   const [selectedPlanKey, setSelectedPlanKey] = useState("free");
+  const [paymentPlusEnabled, setPaymentPlusEnabled] = useState(false);
   const [selectedPeriod, setSelectedPeriod] = useState("monthly");
   const [customDays, setCustomDays] = useState("");
   const [customHours, setCustomHours] = useState("");
+
+  const corePlans = useMemo(() => {
+    const filtered = plans.filter((p) => ["free", "pro"].includes(p.key));
+    if (filtered.length) return filtered;
+    return [
+      { key: "free", name: "مجاني", prices: { monthly: 0 } },
+      { key: "pro", name: "Pro", prices: { monthly: 149 } },
+    ];
+  }, [plans]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -750,13 +761,27 @@ export default function UsersManager() {
         planKey: selectedPlanKey,
         billingPeriod: selectedPeriod,
         customDays: customDays ? parseInt(customDays, 10) : null,
-        customHours: customHours ? parseInt(customHours, 10) : null
+        customHours: customHours ? parseInt(customHours, 10) : null,
+        paymentPlus: paymentPlusEnabled,
       });
       setPlanModal(null);
       load();
     } catch (e) {
     } finally {
       setActionLoading(false);
+    }
+  };
+
+  const handleTogglePaymentPlus = async (user) => {
+    try {
+      const res = await toggleUserPaymentPlus(user.id);
+      setUsers((prev) =>
+        prev.map((u) =>
+          u.id === user.id ? { ...u, hasPaymentPlus: res.hasPaymentPlus } : u
+        )
+      );
+    } catch (e) {
+      console.error("Failed to toggle payment plus", e);
     }
   };
 
@@ -874,11 +899,28 @@ export default function UsersManager() {
                         {user.email}
                       </td>
                       <td className="py-3 px-5">
-                        <Badge
-                          variant={user.planKey === "free" ? "slate" : "indigo"}
-                        >
-                          {typeof user.planName === 'object' ? (user.planName?.ar || user.planName?.en) : user.planName}
-                        </Badge>
+                        <div className="flex flex-col gap-1.5 items-start">
+                          <Badge
+                            variant={user.planKey === "pro" ? "indigo" : "slate"}
+                          >
+                            {user.planKey === "pro" ? "Pro" : "مجاني"}
+                          </Badge>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleTogglePaymentPlus(user);
+                            }}
+                            className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold transition-all cursor-pointer border ${
+                              user.hasPaymentPlus
+                                ? "bg-emerald-50 text-emerald-700 border-emerald-300 hover:bg-emerald-100 dark:bg-emerald-950/60 dark:text-emerald-300"
+                                : "bg-slate-50 text-slate-400 border-slate-200 hover:bg-slate-100 hover:text-slate-700 dark:bg-slate-900/60 dark:text-slate-500"
+                            }`}
+                            title={user.hasPaymentPlus ? "انقر لتعطيل Payment Plus" : "انقر لتفعيل Payment Plus"}
+                          >
+                            <span>{user.hasPaymentPlus ? "✓ Payment Plus (مفعل)" : "✕ Payment Plus (معطل)"}</span>
+                          </button>
+                        </div>
                       </td>
                       <td className="py-3 px-5">
                         <Badge variant={user.isActive ? "green" : "red"}>
@@ -887,7 +929,7 @@ export default function UsersManager() {
                       </td>
                       <td className="py-3 px-5 text-sm text-slate-400">
                         {user.createdAt
-                          ? new Date(user.createdAt).toLocaleDateString("ar-EG")
+                          ? new Date(user.createdAt).toLocaleDateString("ar-EG-u-nu-latn")
                           : "—"}
                       </td>
                       <td
@@ -904,10 +946,11 @@ export default function UsersManager() {
                           </button>
                           <button
                             onClick={() => {
-                              setSelectedPlanKey(user.planKey || "free");
+                              setSelectedPlanKey(user.planKey === "pro" ? "pro" : "free");
+                              setPaymentPlusEnabled(Boolean(user.hasPaymentPlus));
                               setPlanModal(user);
                             }}
-                            title="تغيير الباقة"
+                            title="تغيير الباقة والخدمات"
                             className="p-1.5 text-slate-400 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-colors"
                           >
                             <CreditCard className="w-4 h-4" />
@@ -1020,9 +1063,9 @@ export default function UsersManager() {
                 }
                 className="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500 outline-none bg-slate-50"
               >
-                {plans.map((p) => (
+                {corePlans.map((p) => (
                   <option key={p.key} value={p.key}>
-                    {typeof p.name === 'object' ? (p.name?.ar || p.name?.en) : p.name}
+                    {p.key === "pro" ? "Pro (الاحترافية)" : "مجاني (Free)"}
                   </option>
                 ))}
               </select>
@@ -1104,42 +1147,89 @@ export default function UsersManager() {
       {/* CHANGE PLAN MODAL */}
       {planModal && (
         <Modal
-          title={`تغيير باقة: ${planModal.name}`}
+          title={`إدارة باقات واشتراك: ${planModal.name}`}
           onClose={() => setPlanModal(null)}
         >
           <div className="space-y-4">
-            <p className="text-slate-500 text-sm">
-              الباقة الحالية:{" "}
-              <strong>
-                {typeof planModal.planName === 'object'
-                  ? (planModal.planName?.ar || planModal.planName?.en)
-                  : planModal.planName}
-              </strong>
-            </p>
-            <div className="space-y-2">
-              {plans.map((plan) => (
-                <label
-                  key={plan.key}
-                  className={`flex items-center gap-3 p-4 rounded-xl border-2 cursor-pointer transition-all ${selectedPlanKey === plan.key ? "border-indigo-500 bg-indigo-50" : "border-slate-200 hover:border-slate-300"}`}
-                >
+            <div className="flex items-center justify-between p-3 rounded-xl bg-slate-50 border border-slate-200">
+              <span className="text-slate-500 text-xs font-bold">الباقة الأساسية الحالية:</span>
+              <Badge variant={planModal.planKey === "pro" ? "indigo" : "slate"}>
+                {planModal.planKey === "pro" ? "Pro" : "مجاني"}
+              </Badge>
+            </div>
+
+            {/* Core Plans: Free / Pro */}
+            <div>
+              <label className="text-xs font-black text-slate-700 block mb-2">
+                1. الباقة الأساسية (Core Plans):
+              </label>
+              <div className="space-y-2">
+                {corePlans.map((plan) => (
+                  <label
+                    key={plan.key}
+                    className={`flex items-center gap-3 p-3.5 rounded-xl border-2 cursor-pointer transition-all ${selectedPlanKey === plan.key ? "border-indigo-500 bg-indigo-50" : "border-slate-200 hover:border-slate-300"}`}
+                  >
+                    <input
+                      type="radio"
+                      name="plan"
+                      value={plan.key}
+                      checked={selectedPlanKey === plan.key}
+                      onChange={() => setSelectedPlanKey(plan.key)}
+                      className="text-indigo-600"
+                    />
+                    <div>
+                      <p className="font-bold text-sm text-slate-800">
+                        {plan.key === "pro" ? "Pro (الاحترافية)" : "مجاني (Free)"}
+                      </p>
+                      <p className="text-xs text-slate-500" dir="ltr">
+                        {plan.prices?.monthly || 0} ج.م / شهر
+                      </p>
+                    </div>
+                  </label>
+                ))}
+              </div>
+            </div>
+
+            {/* Side / Add-on: Thenith Payment Plus */}
+            <div className="rounded-2xl border-2 border-indigo-200 bg-gradient-to-r from-indigo-50/50 via-white to-white p-4">
+              <div className="flex items-center justify-between gap-3 mb-2">
+                <div>
+                  <h4 className="text-sm font-black text-indigo-950 flex items-center gap-2">
+                    <span>2. باقة / خدمة Thenith Payment Plus (جانبية)</span>
+                  </h4>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    صفحة الدفع الموحدة لجميع المحافظ الإلكترونية وروابط الدفع المباشرة.
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-4 pt-2.5 border-t border-indigo-100">
+                <label className="flex items-center gap-2 cursor-pointer">
                   <input
                     type="radio"
-                    name="plan"
-                    value={plan.key}
-                    checked={selectedPlanKey === plan.key}
-                    onChange={() => setSelectedPlanKey(plan.key)}
-                    className="text-indigo-600"
+                    name="paymentPlusChoice"
+                    checked={paymentPlusEnabled === true}
+                    onChange={() => setPaymentPlusEnabled(true)}
+                    className="text-emerald-600"
                   />
-                  <div>
-                    <p className="font-bold text-slate-800">
-                      {typeof plan.name === 'object' ? (plan.name?.ar || plan.name?.en) : plan.name}
-                    </p>
-                    <p className="text-sm text-slate-500" dir="ltr">
-                      {plan.prices?.monthly || 0} ج.م / شهر
-                    </p>
-                  </div>
+                  <span className={`text-xs font-bold px-2.5 py-1 rounded-lg border ${paymentPlusEnabled ? "bg-emerald-600 text-white border-emerald-600 shadow-sm" : "bg-emerald-50 text-emerald-800 border-emerald-200"}`}>
+                    ✓ تفعيل الخدمة (مفعل)
+                  </span>
                 </label>
-              ))}
+
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="radio"
+                    name="paymentPlusChoice"
+                    checked={paymentPlusEnabled === false}
+                    onChange={() => setPaymentPlusEnabled(false)}
+                    className="text-slate-600"
+                  />
+                  <span className={`text-xs font-bold px-2.5 py-1 rounded-lg border ${!paymentPlusEnabled ? "bg-slate-700 text-white border-slate-700 shadow-sm" : "bg-slate-100 text-slate-600 border-slate-200"}`}>
+                    ✕ تعطيل الخدمة (معطل)
+                  </span>
+                </label>
+              </div>
             </div>
             {selectedPlanKey !== "free" && (
               <div className="space-y-4 mt-4 pt-4 border-t border-slate-100">

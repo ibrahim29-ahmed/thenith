@@ -33,11 +33,17 @@ export const apiClient = axios.create({
   },
 });
 
+import { getCachedDeviceIp } from "../utils/deviceNetwork.js";
+
 apiClient.interceptors.request.use((config) => {
   config.baseURL = getApiBaseUrl();
   const token = localStorage.getItem("admin_token");
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
+  }
+  const deviceIp = getCachedDeviceIp();
+  if (deviceIp && !config.headers["X-Device-IP"]) {
+    config.headers["X-Device-IP"] = deviceIp;
   }
   return config;
 });

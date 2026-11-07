@@ -10,7 +10,12 @@ const orderItemSchema = new mongoose.Schema(
     name: { type: mongoose.Schema.Types.Mixed, required: true },
     price: { type: Number, required: true },
     quantity: { type: Number, required: true, min: 1 },
+    selectedImage: { type: String, default: "" },
+    selectedImageId: { type: String, default: "" },
+    image: { type: String, default: "" },
+    color: { type: mongoose.Schema.Types.Mixed, default: null },
     customDesign: { type: mongoose.Schema.Types.Mixed, default: null },
+    generatedCards: { type: [mongoose.Schema.Types.Mixed], default: [] },
   },
   { _id: false },
 );
@@ -57,7 +62,7 @@ const orderSchema = new mongoose.Schema(
     paymentMethodName: { type: String, default: "" },
     paymentStatus: {
       type: String,
-      enum: ["pending", "paid", "refunded", "failed", "cancelled"],
+      enum: ["pending", "paid", "refunded", "failed", "cancelled", "expired"],
       default: "pending",
     },
     // Fawaterak intent tracking

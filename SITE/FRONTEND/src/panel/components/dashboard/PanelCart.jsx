@@ -71,9 +71,9 @@ export default function PanelCart({ t, onCheckout }) {
             className="bg-white rounded-3xl p-4 sm:p-6 border border-slate-200 shadow-sm flex flex-col sm:flex-row items-center gap-6 dark:bg-slate-950 dark:border-slate-800"
           >
             <div className="w-24 h-24 sm:w-32 sm:h-32 shrink-0 bg-slate-50 dark:bg-slate-900 rounded-2xl p-2 flex items-center justify-center">
-              {item.customDesign?.image || item.image ? (
+              {item.customDesign?.image || item.selectedImage || item.image ? (
                 <img
-                  src={item.customDesign?.image || item.image}
+                  src={item.customDesign?.image || item.selectedImage || item.image}
                   alt={item.rawName?.[isArabic ? 'ar' : 'en'] || item.rawName?.ar || item.name}
                   className="w-full h-full object-cover rounded-xl"
                 />
@@ -86,6 +86,19 @@ export default function PanelCart({ t, onCheckout }) {
               <h3 className="font-bold text-lg mb-0.5 text-slate-900 dark:text-white">
                 {item.rawName?.[isArabic ? 'ar' : 'en'] || item.rawName?.ar || item.name}
               </h3>
+              {item.color && (
+                <div className="flex items-center justify-center sm:justify-start gap-1.5 my-1">
+                  <span
+                    className="w-3.5 h-3.5 rounded-full border border-black/15 shrink-0"
+                    style={{ backgroundColor: item.color.colorCode || "#000" }}
+                  />
+                  <span className="text-xs font-bold text-slate-600 dark:text-slate-300">
+                    {typeof item.color.name === "object"
+                      ? (item.color.name[isArabic ? 'ar' : 'en'] || item.color.name.ar || item.color.name.en)
+                      : (item.color.name || item.color.colorCode)}
+                  </span>
+                </div>
+              )}
               {item.customDesign && (
                 <p className="text-xs text-indigo-500 font-semibold mb-1">
                   {isArabic ? "تصميم مخصص باسم: " : "Custom design: "}

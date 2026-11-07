@@ -7,6 +7,30 @@ import { useCart } from "../context/CartContext.jsx";
 import { useGlobalLanguage } from "../context/GlobalLanguageContext.jsx";
 import { useAuth } from "../context/AuthContext.jsx";
 
+// Card with Pen Icon (أيقونة بطاقة مع قلم لتخصيص وتصميم الكارت)
+export function CardWithPenIcon({ className = "h-4 w-4", ...props }) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+      {...props}
+    >
+      <path d="M2 9V7a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v2" />
+      <path d="M2 13v4a2 2 0 0 0 2 2h8" />
+      <line x1="2" x2="16" y1="9" y2="9" />
+      <line x1="6" x2="9" y1="14" y2="14" />
+      <path d="m14 17.5 5.5-5.5a1.414 1.414 0 0 1 2 2L16 19.5l-3.5 1z" />
+      <line x1="17.5" y1="14" x2="19.5" y2="16" />
+    </svg>
+  );
+}
+
 export default function MainNavbar() {
   const [isScrolled, setIsScrolled] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -24,8 +48,7 @@ export default function MainNavbar() {
 
   const isStore =
     location.pathname.includes("/products") ||
-    location.pathname.includes("/cart") ||
-    location.pathname.includes("/checkout");
+    location.pathname.includes("/cart");
 
   const shouldHideNavbar =
     location.pathname.startsWith("/u") ||
@@ -58,7 +81,7 @@ export default function MainNavbar() {
               {t("navbar.home")}
             </Link>
             <Link
-              to="/products"
+              to={isAuthenticated ? "/u/products" : "/products"}
               className="hover:text-slate-900 hover:-translate-y-0.5 transition-all"
             >
               {t("navbar.products")}
@@ -88,7 +111,7 @@ export default function MainNavbar() {
           <div className="hidden lg:flex items-center gap-6 text-[15px] font-medium">
             {isStore && (
               <Link
-                to="/cart"
+                to={isAuthenticated ? "/u/cart" : "/cart"}
                 className="relative text-slate-500 hover:text-indigo-600 transition-colors p-2 hover:bg-slate-100 rounded-full"
               >
                 <ShoppingCart className="w-5 h-5" />
@@ -140,7 +163,7 @@ export default function MainNavbar() {
           <div className="flex items-center gap-4 lg:hidden">
             {isStore && (
               <Link
-                to="/cart"
+                to={isAuthenticated ? "/u/cart" : "/cart"}
                 className="relative text-slate-500 hover:text-indigo-600 transition-colors p-2"
               >
                 <ShoppingCart className="w-5 h-5" />
@@ -184,7 +207,7 @@ export default function MainNavbar() {
               <Link to="/" onClick={() => setMobileMenuOpen(false)}>
                 {t("navbar.home")}
               </Link>
-              <Link to="/products" onClick={() => setMobileMenuOpen(false)}>
+              <Link to={isAuthenticated ? "/u/products" : "/products"} onClick={() => setMobileMenuOpen(false)}>
                 {t("navbar.products")}
               </Link>
               <Link to="/pricing" onClick={() => setMobileMenuOpen(false)}>

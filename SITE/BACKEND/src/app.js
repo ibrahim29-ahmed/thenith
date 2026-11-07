@@ -34,15 +34,46 @@ import checkoutRoutes from "./routes/checkoutRoutes.js";
 import shippingRoutes from "./routes/shippingRoutes.js";
 import paymentRoutes from "./routes/paymentRoutes.js";
 import notificationsRoutes from "./routes/notifications.js";
+import policyRoutes from "./routes/policyRoutes.js";
+import referralRoutes from "./routes/referralRoutes.js";
 
 export const app = express();
 app.set("trust proxy", 1);
-app.use(helmet());
+
+// Private Network Access (PNA) header support for Chromium browsers
+app.use((req, res, next) => {
+  if (req.headers["access-control-request-private-network"]) {
+    res.setHeader("Access-Control-Allow-Private-Network", "true");
+  }
+  next();
+});
+
+app.use(helmet({
+  crossOriginResourcePolicy: { policy: "cross-origin" },
+}));
 app.use(cors(corsOptions));
 app.use(compression({ threshold: 1024 }));
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 app.use(cookieParser());
+
+// ── NoSQL Injection Prevention ──
+function sanitizeMongoKeys(obj) {
+  if (!obj || typeof obj !== "object") return;
+  for (const key of Object.keys(obj)) {
+    if (key.startsWith("$") || key.includes(".")) {
+      delete obj[key];
+    } else if (typeof obj[key] === "object" && obj[key] !== null) {
+      sanitizeMongoKeys(obj[key]);
+    }
+  }
+}
+app.use((req, _res, next) => {
+  if (req.body) sanitizeMongoKeys(req.body);
+  if (req.query) sanitizeMongoKeys(req.query);
+  if (req.params) sanitizeMongoKeys(req.params);
+  next();
+});
 
 // ── 1. Security Audit Logger ──
 // MUST be placed here before any blockers so it can intercept their responses and log them!
@@ -69,12 +100,18 @@ app.use("/api/checkout", checkoutRoutes);
 app.use("/api/shipping-rates", shippingRoutes);
 app.use("/api/payment", paymentRoutes);
 app.use("/api/notifications", notificationsRoutes);
+app.use("/api/policies", policyRoutes);
+app.use("/api/referrals", referralRoutes);
 
 
 app.use("/api/public", publicRoutes);
 app.use("/api/p", publicRoutes);
+app.use("/api/m", publicRoutes);
+app.use("/api/pay", publicRoutes);
 app.use("/public", publicRoutes);
 app.use("/p", publicRoutes);
+app.use("/m", publicRoutes);
+app.use("/pay", publicRoutes);
 app.use("/", publicRoutes);
 
 app.use(notFound);

@@ -1,5 +1,7 @@
+import mongoose from "mongoose";
 import AuditLog from "../models/AuditLog.js";
 import _envConfig from "../config/env.js";
+import geoip from "geoip-lite";
 
 const SCANNER_PATHS = [
   ".env",
@@ -41,25 +43,42 @@ function isMalicious(payload) {
   return MALICIOUS_PATTERNS.some((pattern) => pattern.test(str));
 }
 
-import geoip from "geoip-lite";
-
-function getIp(req) {
-  let ip =
-    req.headers["x-forwarded-for"] ||
-    req.ip ||
-    req.socket?.remoteAddress ||
-    "Unknown";
-  if (ip.includes(",")) ip = ip.split(",")[0];
-  if (ip === "::1") ip = "127.0.0.1";
-  if (ip.startsWith("::ffff:")) ip = ip.replace("::ffff:", "");
-  return ip.trim();
+function cleanIp(val) {
+  if (!val || typeof val !== "string") return "127.0.0.1";
+  let c = val.trim();
+  if (c === "::1" || c === "localhost") return "127.0.0.1";
+  if (c.startsWith("::ffff:")) c = c.replace("::ffff:", "");
+  return c;
 }
 
-function getNetworkIp(req) {
-  let ip = req.socket?.remoteAddress || "Unknown";
-  if (ip === "::1") ip = "127.0.0.1";
-  if (ip.startsWith("::ffff:")) ip = ip.replace("::ffff:", "");
-  return ip.trim();
+function extractIps(req) {
+  let deviceIp =
+    req.headers["x-device-ip"] ||
+    req.headers["x-client-device-ip"] ||
+    "";
+
+  let networkIp =
+    req.headers["cf-connecting-ip"] ||
+    req.headers["x-real-ip"] ||
+    "";
+
+  const forwarded = req.headers["x-forwarded-for"];
+  if (forwarded && typeof forwarded === "string") {
+    const parts = forwarded.split(",").map((s) => s.trim()).filter(Boolean);
+    if (parts.length > 0) {
+      if (!deviceIp) deviceIp = parts[0];
+      if (!networkIp) networkIp = parts[parts.length - 1];
+    }
+  }
+
+  const socketIp = req.socket?.remoteAddress || req.ip || "127.0.0.1";
+  if (!networkIp) networkIp = socketIp;
+  if (!deviceIp) deviceIp = networkIp;
+
+  return {
+    deviceIp: cleanIp(deviceIp),
+    networkIp: cleanIp(networkIp),
+  };
 }
 
 let _io = null;
@@ -70,63 +89,106 @@ export function setIO(ioInstance) {
 
 async function emitLog(log) {
   try {
-    // Use cached io first for speed
     if (_io) {
       _io.to("admin_room").emit("newAuditLog", log);
       return;
     }
-    // Fallback to dynamic import
     const socketModule = await import("../services/socketService.js");
     const io = socketModule.default.getIO();
     io.to("admin_room").emit("newAuditLog", log);
   } catch (err) {
-    // Silent — socket may not be ready yet
+    // Silent
   }
 }
 
 function getCategory(path) {
+  const p = path.toLowerCase();
+
   if (
-    path.startsWith("/api/auth") ||
-    path.startsWith("/api/user") ||
-    path.startsWith("/api/profile")
-  )
-    return "panel_profile";
-  if (path.startsWith("/api/admin")) return "admin_dashboard";
+    p.includes("wp-admin") ||
+    p.includes("phpmyadmin") ||
+    p.includes(".env") ||
+    p.includes(".git")
+  ) {
+    return "security";
+  }
+
   if (
-    path.startsWith("/api/payment") ||
-    path.startsWith("/api/subscription") ||
-    path.startsWith("/api/plan")
-  )
+    p.includes("/payment-methods") ||
+    p.includes("/shipping-rates") ||
+    p.includes("/plans") ||
+    p.includes("/subscription")
+  ) {
     return "payments_subscriptions";
-  if (
-    path.startsWith("/api/product") ||
-    path.startsWith("/api/order") ||
-    path.startsWith("/api/coupon") ||
-    path.startsWith("/api/store")
-  )
+  }
+
+  if (p.includes("/product") || p.includes("/order") || p.includes("/coupon")) {
     return "store";
+  }
+
+  if (p.includes("/settings") || p.includes("/seo") || p.includes("/mail-settings")) {
+    return "system";
+  }
+
+  if (p.startsWith("/api/admin")) {
+    return "admin_dashboard";
+  }
+
   return "system";
 }
 
-const securityAudit = async (req, res, next) => {
-  if (req.path === "/api/health") return next();
+function getAdminActionDescription(method, path, statusCode) {
+  const p = path.toLowerCase();
 
-  const ip = getIp(req);
-  const networkIp = getNetworkIp(req);
+  if (p === "/api/admin/login") return "تسجيل دخول لوحة تحكم الأدمن (Admin Login)";
+  if (p === "/api/admin/stats") return "استعراض إحصائيات النظام العامة (Dashboard Stats)";
+  if (p.startsWith("/api/admin/users")) {
+    if (method === "GET") return "استعراض بيانات وقائمة المستخدمين (Users List)";
+    if (method === "POST") return "إضافة مستخدم جديد عبر الأدمن (User Created by Admin)";
+    if (method === "PATCH" && p.includes("/ban")) return "تغيير حالة حظر المستخدم (User Ban Toggled)";
+    return "تحديث بيانات مستخدم بواسطة الأدمن (User Modified by Admin)";
+  }
+  if (p.startsWith("/api/admin/cards")) return "إدارة البطاقات والـ NFC عبر الأدمن (Cards Management)";
+  if (p.startsWith("/api/admin/products")) return "إدارة منتجات المتجر بواسطة الأدمن (Admin Store Products)";
+  if (p.startsWith("/api/admin/orders")) return "إدارة وتحديث طلبات المتجر (Admin Store Orders)";
+  if (p.startsWith("/api/admin/plans")) return "تحديث وإدارة باقات الاشتراك (Plans Management)";
+  if (p.startsWith("/api/admin/coupons")) return "إدارة كوبونات الخصم (Coupons Management)";
+  if (p.startsWith("/api/admin/settings")) return "تحديث إعدادات المنصة والهوية (Platform Settings Updated)";
+  if (p.startsWith("/api/admin/seo")) return "تحديث إعدادات السيو والسايت ماب (SEO & Sitemap Updated)";
+  if (p.startsWith("/api/admin/mail-settings")) return "تحديث إعدادات وقوالب البريد الإلكتروني (Email Settings Updated)";
+  if (p.startsWith("/api/admin/payment-methods")) return "إدارة وسائل الدفع الإلكتروني (Payment Methods Updated)";
+  if (p.startsWith("/api/admin/customer-services")) return "إدارة رسائل ومحادثات خدمة العملاء (Customer Support)";
+
+  return `${method} ${path} (${statusCode})`;
+}
+
+const securityAudit = async (req, res, next) => {
   const path = req.path.toLowerCase();
   const method = req.method;
+
+  // IMPORTANT: Do NOT log audit log queries or health check to avoid infinite recursion!
+  if (
+    path.startsWith("/api/admin/audit") ||
+    path === "/api/health" ||
+    path === "/api/admin/health" ||
+    path === "/health" ||
+    method === "OPTIONS" ||
+    /\.(png|jpe?g|webp|gif|svg|ico|css|js|map|woff2?|ttf|eot)$/i.test(path)
+  ) {
+    return next();
+  }
+
+  const { deviceIp, networkIp } = extractIps(req);
   const userAgent = req.headers["user-agent"] || "";
 
-  // ── Geo location ──────────────────────────────────────────────
-  const geo = geoip.lookup(ip);
+  // Location via geoip-lite
+  const lookupIp = networkIp !== "127.0.0.1" ? networkIp : deviceIp;
+  const geo = geoip.lookup(lookupIp);
   const country = geo?.country || "Unknown";
   const governorate = geo?.region || "Unknown";
-  // Build human-readable location: city, region, country
   const locationParts = [geo?.city, geo?.region, geo?.country].filter(Boolean);
-  const location =
-    locationParts.length > 0 ? locationParts.join(", ") : "Unknown";
+  const location = locationParts.length > 0 ? locationParts.join(", ") : "Unknown";
 
-  // ── Request origin & source detection ─────────────────────────
   const origin = req.headers["origin"] || "";
   const referrer = req.headers["referer"] || req.headers["referrer"] || "";
   const queryString = req.url?.includes("?") ? req.url.split("?")[1] : "";
@@ -134,56 +196,22 @@ const securityAudit = async (req, res, next) => {
   const host = req.headers["host"] || "";
   const fullUrl = `${protocol}://${host}${req.originalUrl || req.url || path}`;
 
-  // ── isExternal detection ───────────────────────────────────────
-  // Normalize and compare origin against the CORS-allowed frontend origins
-  const allowedOrigins = _envConfig.clientOrigins || [];
-
-  // Localhost/127.0.0.1 always treated as internal (dev environments)
-  const isLocalhost = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(
-    origin,
-  );
-
-  // Normalize: trim trailing slash, lowercase
-  const normalizedOrigin = origin.trim().replace(/\/+$/, "").toLowerCase();
-  const isAllowedByOrigin =
-    isLocalhost ||
-    allowedOrigins.some(
-      (o) => o.trim().replace(/\/+$/, "").toLowerCase() === normalizedOrigin,
-    );
-
-  // ── Vite Proxy fallback ───────────────────────────────────────
-  // When Vite dev server proxies a request with changeOrigin:true, it strips/changes
-  // the Origin header — so we fallback to X-Requested-With or Referer headers.
-  // The axios client always sends X-Requested-With: XMLHttpRequest.
-  const xRequestedWith = req.headers["x-requested-with"] || "";
-  const isViteProxied = xRequestedWith.toLowerCase() === "xmlhttprequest";
-
-  // Also check referer: if it starts with one of the allowed origins → frontend
-  const refererOrigin = referrer ? new URL(referrer).origin : "";
-  const normalizedRefererOrigin = refererOrigin
-    .trim()
-    .replace(/\/+$/, "")
-    .toLowerCase();
-  const isAllowedByReferer =
-    /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(refererOrigin) ||
-    allowedOrigins.some(
-      (o) =>
-        o.trim().replace(/\/+$/, "").toLowerCase() === normalizedRefererOrigin,
-    );
-
-  // isExternal = true only if we have NO indication this came from our frontend
   const isExternal =
-    !isAllowedByOrigin && !isViteProxied && !isAllowedByReferer;
+    !origin.includes("localhost") &&
+    !origin.includes("127.0.0.1") &&
+    !referrer.includes("localhost") &&
+    !referrer.includes("127.0.0.1") &&
+    !origin.includes("thenith.com");
 
   const logBase = {
-    ip,
+    ip: deviceIp,
     networkIp,
     country,
     governorate,
     location,
     userAgent,
-    origin,
     referrer,
+    origin,
     fullUrl,
     queryString,
     isExternal,
@@ -198,7 +226,7 @@ const securityAudit = async (req, res, next) => {
       ...logBase,
       level: "critical",
       category: "security",
-      message: `Directory probing: ${path}`,
+      message: `فحص مسارات محظورة في لوحة التحكم: ${path}`,
       anomalyScore: 80,
     })
       .then(emitLog)
@@ -212,42 +240,53 @@ const securityAudit = async (req, res, next) => {
       ...logBase,
       level: "critical",
       category: "security",
-      message: "Malicious payload (XSS/SQLi) detected",
+      message: `محاولة إدخال حمولة خبيثة XSS/SQLi على مسار الأدمن: ${path}`,
       anomalyScore: 100,
     })
       .then(emitLog)
       .catch(() => {});
-    return res
-      .status(403)
-      .json({ error: "Access Forbidden: Malicious payload." });
+    return res.status(403).json({ error: "Access Forbidden: Malicious payload." });
   }
 
-  // 3. Log API Activity (Asynchronous to prevent blocking)
+  // 3. Log API Activity (Asynchronous)
   const originalSend = res.send.bind(res);
   res.send = function (data) {
     res.send = originalSend;
 
     setImmediate(async () => {
       try {
+        const category = getCategory(path);
         const level =
           res.statusCode >= 500
             ? "critical"
-            : res.statusCode >= 400
+            : res.statusCode >= 400 || category === "security"
               ? "warning"
               : "info";
-        // Always log everything? Or only specific paths? The current logic was only errors + auth + admin. Let's log everything for the requested categories or if error.
+
+        let resolvedUserId = null;
+        if (req.admin?.id && mongoose.Types.ObjectId.isValid(req.admin.id)) {
+          resolvedUserId = req.admin.id;
+        }
+
+        const message = getAdminActionDescription(method, path, res.statusCode);
+
         const log = await AuditLog.create({
           ...logBase,
           level,
-          category: getCategory(path),
-          userId: req.user?._id || null,
-          message: `${method} ${path} completed with status ${res.statusCode}`,
-          details: { statusCode: res.statusCode },
+          category,
+          userId: resolvedUserId,
+          message,
+          details: {
+            statusCode: res.statusCode,
+            adminUsername: req.admin?.username || "Admin",
+            ...(req.query && Object.keys(req.query).length > 0 ? { query: req.query } : {}),
+          },
+          anomalyScore: level === "critical" ? 80 : level === "warning" ? 40 : 0,
         });
 
         await emitLog(log);
       } catch (err) {
-        // Silent catch
+        // Silent
       }
     });
 
@@ -258,3 +297,4 @@ const securityAudit = async (req, res, next) => {
 };
 
 export default { securityAudit };
+export { securityAudit };

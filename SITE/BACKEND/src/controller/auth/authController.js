@@ -36,6 +36,7 @@ import _authService from "../../services/auth/authService.js";
 const { issueSession, publicUser, REFRESH_COOKIE_NAME, cookieOptions } =
   _authService;
 import { OAuth2Client } from "google-auth-library";
+import referralService from "../../services/referralService.js";
 import _env from "../../config/env.js";
 const { env } = _env;
 import _entitlements from "../../util/entitlements.js";
@@ -66,6 +67,34 @@ function clearRefreshCookie(response) {
     secure: cookieOptions.secure,
     maxAge: 0,
   });
+}
+
+// Helper: resolve user registration traffic source in English
+function resolveTrafficSource(req, explicitReferrer) {
+  if (explicitReferrer && typeof explicitReferrer === "string" && explicitReferrer.trim()) {
+    const trimmed = explicitReferrer.trim();
+    if (trimmed === "مباشر" || trimmed === "مباشرة") return "Direct";
+    return trimmed;
+  }
+  const refHeader = String(req?.headers?.["referer"] || req?.headers?.["referrer"] || "").toLowerCase();
+  if (refHeader) {
+    if (refHeader.includes("google.")) return "Google";
+    if (refHeader.includes("facebook.") || refHeader.includes("fb.")) return "Facebook";
+    if (refHeader.includes("instagram.")) return "Instagram";
+    if (refHeader.includes("tiktok.")) return "TikTok";
+    if (refHeader.includes("linkedin.")) return "LinkedIn";
+    if (refHeader.includes("twitter.") || refHeader.includes("t.co") || refHeader.includes("x.com")) return "Twitter / X";
+    if (refHeader.includes("youtube.")) return "YouTube";
+    if (refHeader.includes("whatsapp.")) return "WhatsApp";
+    if (refHeader.includes("telegram.")) return "Telegram";
+    try {
+      const url = new URL(refHeader);
+      if (url.hostname && !url.hostname.includes("thenith") && !url.hostname.includes("localhost") && !url.hostname.includes("127.0.0.1")) {
+        return url.hostname;
+      }
+    } catch {}
+  }
+  return "Direct";
 }
 
 // ── Request OTP code ──────────────────────────────────────────────────────────
@@ -152,6 +181,16 @@ const verifyCode = asyncHandler(async (request, response) => {
     user.isEmailVerified = true;
     await user.save();
   }
+
+  const { referralCode } = request.body || {};
+  if (user && referralCode && !user.referredBy) {
+    await referralService.attributeReferralOnRegistration({
+      invitee: user,
+      referralCode,
+      req: request,
+    }).catch(() => {});
+  }
+
   const accessToken = await issueSession(user, request, response);
 
   response.json({
@@ -163,7 +202,7 @@ const verifyCode = asyncHandler(async (request, response) => {
 
 // ── Complete registration after OTP ──────────────────────────────────────────
 const completeRegistration = asyncHandler(async (request, response) => {
-  const { verificationToken, name, phone, address, jobTitle, company, bio } =
+  const { verificationToken, name, phone, address, jobTitle, company, bio, referralCode } =
     request.body || {};
 
   let payload;
@@ -189,6 +228,7 @@ const completeRegistration = asyncHandler(async (request, response) => {
     address: address?.trim() || "",
     passwordHash: await bcrypt.hash(crypto.randomUUID(), 12),
     avatar: userAvatar,
+    referrer: resolveTrafficSource(request, request.body?.referrer || request.body?.source),
   });
   const freePlan = await Plan.findOne({ key: "free" });
   await Subscription.create({
@@ -213,6 +253,15 @@ const completeRegistration = asyncHandler(async (request, response) => {
   });
   user.activeCardId = firstCard._id;
   await user.save();
+  await referralService.ensureUserReferralCode(user);
+  if (referralCode) {
+    await referralService.attributeReferralOnRegistration({
+      invitee: user,
+      referralCode,
+      req: request,
+    }).catch(() => {});
+  }
+
   const accessToken = await issueSession(user, request, response);
 
   response.status(201).json({
@@ -242,6 +291,7 @@ const register = asyncHandler(async (request, response) => {
     name: name.trim(),
     passwordHash: await bcrypt.hash(password, 12),
     avatar: userAvatar,
+    referrer: resolveTrafficSource(request, request.body?.referrer || request.body?.source),
   });
   const freePlan = await Plan.findOne({ key: "free" });
   await Subscription.create({
@@ -251,6 +301,15 @@ const register = asyncHandler(async (request, response) => {
     startedAt: new Date(),
     provider: "manual",
   });
+  const { referralCode } = request.body || {};
+  if (user && referralCode && !user.referredBy) {
+    await referralService.attributeReferralOnRegistration({
+      invitee: user,
+      referralCode,
+      req: request,
+    }).catch(() => {});
+  }
+
   const accessToken = await issueSession(user, request, response);
   response.status(201).json({
     user: publicUser(user),
@@ -297,6 +356,15 @@ const login = asyncHandler(async (request, response) => {
 
   if (!(await bcrypt.compare(password, user.passwordHash))) {
     throw new HttpError(401, "Invalid email or password");
+  }
+
+  const { referralCode } = request.body || {};
+  if (user && referralCode && !user.referredBy) {
+    await referralService.attributeReferralOnRegistration({
+      invitee: user,
+      referralCode,
+      req: request,
+    }).catch(() => {});
   }
 
   const accessToken = await issueSession(user, request, response);
@@ -394,6 +462,15 @@ const refreshToken = asyncHandler(async (request, response) => {
   const user = await User.findById(payload.sub);
   if (!user || user.isActive === false) {
     throw new HttpError(401, "User session is invalid");
+  }
+
+  const { referralCode } = request.body || {};
+  if (user && referralCode && !user.referredBy) {
+    await referralService.attributeReferralOnRegistration({
+      invitee: user,
+      referralCode,
+      req: request,
+    }).catch(() => {});
   }
 
   const accessToken = await issueSession(user, request, response);
@@ -615,6 +692,15 @@ const googleAuth = asyncHandler(async (request, response) => {
       payload: { name: googlePayload.name || "", email },
     });
     return;
+  }
+
+  const { referralCode } = request.body || {};
+  if (user && referralCode && !user.referredBy) {
+    await referralService.attributeReferralOnRegistration({
+      invitee: user,
+      referralCode,
+      req: request,
+    }).catch(() => {});
   }
 
   const accessToken = await issueSession(user, request, response);

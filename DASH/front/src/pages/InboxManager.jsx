@@ -127,7 +127,7 @@ export default function InboxManager() {
                     {msg.subject}
                   </h3>
                   <span className="text-xs font-bold text-slate-400" >
-                    {new Date(msg.createdAt).toLocaleString("ar-EG")}
+                    {new Date(msg.createdAt).toLocaleString("ar-EG-u-nu-latn")}
                   </span>
                 </div>
 

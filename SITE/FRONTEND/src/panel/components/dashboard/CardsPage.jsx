@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useLocation } from "react-router-dom";
 import {
   Edit2,
   Plus,
@@ -14,6 +15,7 @@ import {
   Loader2,
   SmartphoneNfc,
   Layers,
+  Wallet,
 } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { QRCodeSVG } from "qrcode.react";
@@ -21,6 +23,7 @@ import { useConfirm } from "../../context/ConfirmContext";
 import { downloadQrCode1080 } from "../../../utils/qrDownload.js";
 import { useGlobalLanguage } from "../../../context/GlobalLanguageContext.jsx";
 import PhysicalSmartCardsSection from "./PhysicalSmartCardsSection.jsx";
+import PaymentMethodsSection from "./PaymentMethodsSection.jsx";
 
 export default function CardsPage({
   t,
@@ -28,6 +31,7 @@ export default function CardsPage({
   activeCardId,
   activeCardLink,
   ownerUsername,
+  ownerPublicId,
   maxCards,
   entitlements,
   onSelectCard,
@@ -36,15 +40,36 @@ export default function CardsPage({
   onDeleteCard,
   isSwitchingCard,
   onUpgrade,
+  ownerPaymentMethods,
+  ownerActivePaymentMethodId,
 }) {
   const { confirm } = useConfirm();
   const { language } = useGlobalLanguage();
   const [shareCardId, setShareCardId] = useState(null);
   const [copied, setCopied] = useState(false);
 
-  const searchParams = new URLSearchParams(window.location.search);
-  const initialSub = searchParams.get("sub") === "physical" ? "physical" : "digital";
+  const location = useLocation();
+  const searchParams = new URLSearchParams(location.search || window.location.search);
+  const subParam = searchParams.get("sub");
+  const initialSub =
+    subParam === "physical"
+      ? "physical"
+      : subParam === "payment"
+        ? "payment"
+        : "digital";
   const [cardsView, setCardsView] = useState(initialSub);
+
+  useEffect(() => {
+    const sp = new URLSearchParams(location.search || window.location.search);
+    const sub = sp.get("sub");
+    if (sub === "physical") {
+      setCardsView("physical");
+    } else if (sub === "payment") {
+      setCardsView("payment");
+    } else if (!sub) {
+      setCardsView("digital");
+    }
+  }, [location.search]);
 
   const handleTabChange = (view) => {
     setCardsView(view);
@@ -52,6 +77,8 @@ export default function CardsPage({
       const url = new URL(window.location.href);
       if (view === "physical") {
         url.searchParams.set("sub", "physical");
+      } else if (view === "payment") {
+        url.searchParams.set("sub", "payment");
       } else {
         url.searchParams.delete("sub");
       }
@@ -94,7 +121,9 @@ export default function CardsPage({
 
     // Extract the username/id part
     const path = rawUrl.split("/").filter(Boolean).pop();
-    const currentOrigin = window.location.origin;
+    const currentOrigin =
+      (typeof import.meta !== "undefined" && import.meta.env?.VITE_SITE_URL) ||
+      window.location.origin;
 
     // Always use the /p/ prefix for the Profile App based on the new unified architecture
     return `${currentOrigin}/p/${path}`;
@@ -150,14 +179,14 @@ export default function CardsPage({
 
   return (
     <section className="space-y-6 p-0 sm:p-3 md:p-0">
-      {/* ── Sub-navigation: Digital Profiles vs Physical Smart Cards ── */}
+      {/* ── Sub-navigation: Digital Profiles vs Physical Smart Cards vs Payment Methods ── */}
       <div className="relative w-full sm:w-auto self-start">
-        <div className="relative grid grid-cols-2 sm:flex items-center p-1.5 rounded-2xl bg-slate-100/90 dark:bg-slate-900/90 backdrop-blur-md border border-slate-200/80 dark:border-slate-800/80 shadow-xs gap-1.5">
+        <div className="relative flex flex-wrap sm:flex-nowrap items-center p-1.5 rounded-2xl bg-slate-100/90 dark:bg-slate-900/90 backdrop-blur-md border border-slate-200/80 dark:border-slate-800/80 shadow-xs gap-1.5">
           {/* Tab 1: Digital Profiles */}
           <button
             type="button"
             onClick={() => handleTabChange("digital")}
-            className={`relative z-10 flex items-center justify-center gap-2 sm:gap-2.5 px-3.5 sm:px-5 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all duration-200 cursor-pointer select-none group ${
+            className={`relative z-10 flex flex-1 sm:flex-initial items-center justify-center gap-2 sm:gap-2.5 px-3.5 sm:px-5 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all duration-200 cursor-pointer select-none group ${
               cardsView === "digital"
                 ? "text-slate-900 dark:text-white"
                 : "text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200"
@@ -195,11 +224,42 @@ export default function CardsPage({
             )}
           </button>
 
-          {/* Tab 2: Smart Physical Cards */}
+          {/* Tab 2: Payment Methods (وسائل الدفع) */}
+          <button
+            type="button"
+            onClick={() => handleTabChange("payment")}
+            className={`relative z-10 flex flex-1 sm:flex-initial items-center justify-center gap-2 sm:gap-2.5 px-3.5 sm:px-5 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all duration-200 cursor-pointer select-none group ${
+              cardsView === "payment"
+                ? "text-slate-900 dark:text-white"
+                : "text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200"
+            }`}
+          >
+            {cardsView === "payment" && (
+              <motion.div
+                layoutId="activeCardsSubTab"
+                transition={{ type: "spring", stiffness: 450, damping: 35 }}
+                className="absolute inset-0 rounded-xl bg-white dark:bg-slate-800 shadow-[0_2px_10px_rgba(0,0,0,0.06),0_1px_2px_rgba(0,0,0,0.04)] dark:shadow-[0_2px_12px_rgba(0,0,0,0.4)] border border-slate-200/70 dark:border-slate-700/70"
+              />
+            )}
+            <span
+              className={`relative z-10 flex items-center justify-center w-7 h-7 rounded-lg transition-colors duration-200 ${
+                cardsView === "payment"
+                  ? "bg-amber-50 dark:bg-amber-950/70 text-amber-600 dark:text-amber-400"
+                  : "bg-slate-200/60 dark:bg-slate-800/60 text-slate-400 dark:text-slate-500 group-hover:text-slate-600 dark:group-hover:text-slate-300"
+              }`}
+            >
+              <Wallet className="w-4 h-4" />
+            </span>
+            <span className="relative z-10 tracking-tight whitespace-nowrap">
+              {language === "ar" ? "وسائل الدفع" : "Payment Methods"}
+            </span>
+          </button>
+
+          {/* Tab 3: Smart Physical Cards */}
           <button
             type="button"
             onClick={() => handleTabChange("physical")}
-            className={`relative z-10 flex items-center justify-center gap-2 sm:gap-2.5 px-3.5 sm:px-5 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all duration-200 cursor-pointer select-none group ${
+            className={`relative z-10 flex flex-1 sm:flex-initial items-center justify-center gap-2 sm:gap-2.5 px-3.5 sm:px-5 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all duration-200 cursor-pointer select-none group ${
               cardsView === "physical"
                 ? "text-slate-900 dark:text-white"
                 : "text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200"
@@ -234,6 +294,14 @@ export default function CardsPage({
 
       {cardsView === "physical" ? (
         <PhysicalSmartCardsSection profiles={cards} activeCardId={activeCardId} />
+      ) : cardsView === "payment" ? (
+        <PaymentMethodsSection
+          initialPaymentMethods={ownerPaymentMethods}
+          initialActivePaymentMethodId={ownerActivePaymentMethodId}
+          ownerUsername={ownerUsername}
+          ownerPublicId={ownerPublicId}
+          onUpgrade={onUpgrade}
+        />
       ) : (
         <>
           <div className="flex flex-col justify-between gap-3 rounded-[20px] bg-white p-3 shadow-sm dark:bg-slate-950/45 sm:flex-row sm:items-center sm:rounded-[24px] sm:p-4 md:bg-transparent md:p-0 md:shadow-none">
@@ -425,7 +493,7 @@ export default function CardsPage({
                       <div className="relative flex h-48 w-48 items-center justify-center rounded-2xl bg-white border-2 border-slate-100 p-3 shadow-sm dark:border-slate-800 dark:bg-slate-900">
                         <QRCodeSVG
                           id="card-qr-svg"
-                          value={shareLink || "https://thenith.com"}
+                          value={shareLink || (typeof import.meta !== "undefined" && import.meta.env?.VITE_SITE_URL) || "http://localhost:3000"}
                           size={160}
                           level="H"
                           className="text-slate-800 dark:text-slate-100"

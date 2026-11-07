@@ -46,11 +46,21 @@ export default function SupportWidget({ embedded = false, isVisible = true }) {
   const [unreadCount, setUnreadCount] = useState(0);
   const [unreadTabCount, setUnreadTabCount] = useState(0);
 
+  const chatContainerRef = useRef(null);
   const messagesEndRef = useRef(null);
   const isOpenRef = useRef(isOpen);
   const hasAutoStarted = useRef(false);
 
   const isVisibleRef = useRef(isVisible);
+
+  const scrollToBottom = (behavior = "auto") => {
+    if (chatContainerRef.current) {
+      chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
+    }
+    if (messagesEndRef.current) {
+      messagesEndRef.current.scrollIntoView({ behavior, block: "end" });
+    }
+  };
 
   useEffect(() => {
     isVisibleRef.current = isVisible;
@@ -97,9 +107,10 @@ export default function SupportWidget({ embedded = false, isVisible = true }) {
     setGuestId(storedId);
 
     const socketUrl =
-      API_BASE_URL === "/api"
+      import.meta.env.VITE_BACKEND_URL ||
+      (API_BASE_URL === "/api"
         ? undefined
-        : API_BASE_URL.replace(/\/api\/?$/, "");
+        : API_BASE_URL.replace(/\/api\/?$/, ""));
 
     const token = getAccessToken();
     const newSocket = io(socketUrl, {
@@ -173,6 +184,20 @@ export default function SupportWidget({ embedded = false, isVisible = true }) {
       }
     });
 
+    newSocket.on("customerServiceStatusChanged", (updatedTicket) => {
+      if (updatedTicket.status === "resolved") {
+        setTicket(null);
+        setMessages([]);
+        if (!embedded) setIsOpen(false);
+        if (!getAccessToken()) {
+          localStorage.removeItem("thenith_support_guest_id");
+          setGuestId(null);
+        }
+      } else {
+        setTicket(updatedTicket);
+      }
+    });
+
     newSocket.on("connect", () => {
       newSocket.emit("joinUserRoom");
     });
@@ -193,18 +218,79 @@ export default function SupportWidget({ embedded = false, isVisible = true }) {
   }, [guestId, embedded, isPanelRoute, ticket]);
 
   useEffect(() => {
-    if (!socket || !ticket) return;
-    const joinRoom = () => { socket.emit("joinTicket", ticket._id); };
+    if (!socket || !ticket?._id) return;
+    const joinRoom = () => {
+      socket.emit("joinTicket", ticket._id);
+      socket.emit("joinCustomerService", { customerServiceId: ticket._id, guestId });
+    };
     joinRoom();
     socket.on("connect", joinRoom);
     return () => { socket.off("connect", joinRoom); };
-  }, [socket, ticket]);
+  }, [socket, ticket?._id, guestId]);
+
+  // Gentle background poll fallback when ticket is active
+  useEffect(() => {
+    if (!ticket?._id) return undefined;
+    const pollInterval = setInterval(() => {
+      api.support.getMessages(ticket._id, guestId || "").then((data) => {
+        if (Array.isArray(data)) {
+          setMessages((prev) => {
+            const missing = data.filter((m) => !prev.some((p) => p._id === m._id));
+            if (missing.length > 0) {
+              missing.forEach((msg) => {
+                if (msg.senderModel === "Admin" || msg.senderModel === "System" || msg.senderModel === "Owner") {
+                  if (!isOpenRef.current) {
+                    setUnreadCount((c) => c + 1);
+                    try {
+                      document.getElementById("user-notify-main")?.play().catch(() => {});
+                    } catch (e) {}
+                  }
+                }
+              });
+              return [...prev, ...missing];
+            }
+            return prev;
+          });
+        }
+      }).catch(() => {});
+    }, 2500);
+
+    return () => clearInterval(pollInterval);
+  }, [ticket?._id, guestId]);
 
   useEffect(() => {
-    if (isVisible) {
-      messagesEndRef.current?.scrollIntoView({ behavior: "auto" });
+    if (isVisible && isOpen && ticket) {
+      scrollToBottom("auto");
+
+      const raf = requestAnimationFrame(() => scrollToBottom("auto"));
+      const t1 = setTimeout(() => scrollToBottom("auto"), 50);
+      const t2 = setTimeout(() => scrollToBottom("auto"), 150);
+      const t3 = setTimeout(() => scrollToBottom("auto"), 350);
+      const t4 = setTimeout(() => scrollToBottom("auto"), 600);
+
+      return () => {
+        cancelAnimationFrame(raf);
+        clearTimeout(t1);
+        clearTimeout(t2);
+        clearTimeout(t3);
+        clearTimeout(t4);
+      };
     }
-  }, [messages, isOpen, isVisible]);
+  }, [messages, isOpen, isVisible, ticket?._id]);
+
+  useEffect(() => {
+    const el = chatContainerRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+
+    const ro = new ResizeObserver(() => {
+      if (isVisible && isOpen && ticket) {
+        scrollToBottom("auto");
+      }
+    });
+
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [isVisible, isOpen, Boolean(ticket)]);
 
   const resumeChat = async () => {
     if (!guestId) return;
@@ -341,7 +427,10 @@ export default function SupportWidget({ embedded = false, isVisible = true }) {
             </div>
 
             {/* Chat Area */}
-            <div className="flex-1 overflow-y-auto scrollbar-hide bg-transparent flex flex-col relative p-4 z-10">
+            <div
+              ref={chatContainerRef}
+              className="flex-1 overflow-y-auto scrollbar-hide bg-transparent flex flex-col relative p-4 z-10"
+            >
               {!ticket ? (
                 <div className="flex-1 flex flex-col justify-center max-w-[320px] mx-auto w-full">
                   <div className="bg-white/80 dark:bg-slate-800/80 p-6 rounded-[24px] shadow-xl dark:shadow-[0_15px_35px_rgba(0,0,0,0.25)] border border-white/60 dark:border-slate-600/50 ring-1 ring-slate-900/5 dark:ring-white/5">
@@ -407,31 +496,43 @@ export default function SupportWidget({ embedded = false, isVisible = true }) {
                     return (
                       <div
                         key={msg._id || i}
-                        className={`flex ${isGuest ? "justify-start" : "justify-end"} mb-2 w-full`}
+                        className={`flex ${isGuest ? "justify-start" : "justify-end"} mb-3 w-full`}
                       >
-                        <div
-                          className={`max-w-[85%] p-3.5 text-sm flex flex-col ${isGuest
-                            ? "bg-black text-white rounded-[20px] rounded-se-[4px] shadow-md"
-                            : "bg-white/95 dark:bg-slate-800/95 text-slate-800 dark:text-slate-100 rounded-[20px] rounded-ss-[4px] border border-slate-200/70 dark:border-slate-600/40 shadow-sm"
-                            }`}
-                        >
-                          <p
-                            className="whitespace-pre-wrap break-words leading-relaxed text-start"
-                            dir="auto"
-                          >
-                            {msg.content}
-                          </p>
+                        <div className={`max-w-[85%] flex flex-col ${isGuest ? "items-start" : "items-end"}`}>
+                          {/* Message Bubble */}
                           <div
-                            className={`text-[10px] mt-1.5 font-medium ${isGuest
-                              ? "text-slate-400 text-start"
-                              : "text-slate-500 dark:text-slate-400 text-end"
-                              }`}
+                            className={`p-3.5 text-sm ${
+                              isGuest
+                                ? "bg-black text-white rounded-[20px] rounded-se-[4px] shadow-md"
+                                : "bg-white/95 dark:bg-slate-800/95 text-slate-800 dark:text-slate-100 rounded-[20px] rounded-ss-[4px] border border-slate-200/70 dark:border-slate-600/40 shadow-sm"
+                            }`}
                           >
-                            {new Date(msg.createdAt || Date.now()).toLocaleTimeString(
-                              "ar-EG-u-nu-latn",
-                              { hour: "2-digit", minute: "2-digit" }
-                            )}
+                            <p
+                              className="whitespace-pre-wrap break-words leading-relaxed text-start"
+                              dir="auto"
+                            >
+                              {msg.content}
+                            </p>
+                            <div
+                              className={`text-[10px] mt-1.5 text-end font-medium ${
+                                isGuest
+                                  ? "text-slate-400"
+                                  : "text-slate-500 dark:text-slate-400"
+                              }`}
+                            >
+                              {new Date(msg.createdAt || Date.now()).toLocaleTimeString(
+                                "ar-EG-u-nu-latn",
+                                { hour: "2-digit", minute: "2-digit" }
+                              )}
+                            </div>
                           </div>
+
+                          {/* Outside Bubble: Sender Name */}
+                          {!isGuest && (
+                            <div className="text-[10px] mt-1 px-1 font-medium text-slate-500 dark:text-slate-400 select-none">
+                              {msg.senderName || (isAr ? "فريق الدعم الفني" : "Support Team")}
+                            </div>
+                          )}
                         </div>
                       </div>
                     );

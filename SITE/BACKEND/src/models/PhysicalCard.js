@@ -15,12 +15,7 @@ export function generateInternalCardId() {
 }
 
 export function generateCardPassword6() {
-  const chars = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ";
-  let random = "";
-  for (let i = 0; i < 6; i++) {
-    random += chars.charAt(Math.floor(Math.random() * chars.length));
-  }
-  return random;
+  return Math.floor(100000 + Math.random() * 900000).toString();
 }
 
 const physicalCardSchema = new mongoose.Schema(
@@ -64,15 +59,51 @@ const physicalCardSchema = new mongoose.Schema(
     },
     color: {
       type: String,
-      enum: ["black", "white", "blue", "purple", "silver", "gold", "custom"],
       default: "black",
+      trim: true,
       index: true,
+    },
+    orderId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Order",
+      default: null,
+      index: true,
+    },
+    orderNumber: {
+      type: String,
+      default: "",
+      trim: true,
+      index: true,
+    },
+    orderColor: {
+      type: mongoose.Schema.Types.Mixed,
+      default: null,
+    },
+    productName: {
+      type: String,
+      default: "",
+      trim: true,
     },
     status: {
       type: String,
       enum: ["unclaimed", "claimed", "disabled"],
       default: "unclaimed",
       index: true,
+    },
+    operationalStatus: {
+      type: String,
+      enum: ["in_printing", "received", "pending", ""],
+      default: "",
+      index: true,
+    },
+    isPrinting: {
+      type: Boolean,
+      default: false,
+      index: true,
+    },
+    printingStartedAt: {
+      type: Date,
+      default: null,
     },
     userId: {
       type: mongoose.Schema.Types.ObjectId,

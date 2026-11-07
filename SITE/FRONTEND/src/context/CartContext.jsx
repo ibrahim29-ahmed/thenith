@@ -28,7 +28,32 @@ export function CartProvider({ children }) {
     }
   }, [cart]);
 
-  const addToCart = (product, quantity = 1, customDesign = null, explicitCartItemId = null) => {
+  // Sync cart across tabs and clear events
+  useEffect(() => {
+    const handleStorageChange = (e) => {
+      if (e.key === "thenith_cart") {
+        if (!e.newValue || e.newValue === "[]") {
+          setCart([]);
+        } else {
+          try {
+            const parsed = JSON.parse(e.newValue);
+            setCart(Array.isArray(parsed) ? parsed : []);
+          } catch {}
+        }
+      }
+    };
+    const handleCartCleared = () => {
+      setCart([]);
+    };
+    window.addEventListener("storage", handleStorageChange);
+    window.addEventListener("cart-cleared", handleCartCleared);
+    return () => {
+      window.removeEventListener("storage", handleStorageChange);
+      window.removeEventListener("cart-cleared", handleCartCleared);
+    };
+  }, []);
+
+  const addToCart = (product, quantity = 1, customDesign = null, explicitCartItemId = null, chosenColor = null) => {
     const isCustomizable = Boolean(product.isCustomizable);
     const isCustom = Boolean(customDesign || product.customDesign);
 
@@ -39,7 +64,56 @@ export function CartProvider({ children }) {
     }
 
     const resolvedCustom = customDesign || product.customDesign || null;
-    const cartItemId = explicitCartItemId || (isCustom ? `${product.id}_${Date.now()}` : product.id);
+    let resolvedColor = chosenColor || product.selectedColor || product.color || null;
+
+    // Resolve selected image and its unique ID
+    let selectedImage = product.selectedImage || "";
+    let selectedImageId = product.selectedImageId || "";
+
+    if (!selectedImage && Array.isArray(product.images) && product.images.length > 0) {
+      const idx = typeof product.activeImageIndex === "number" ? product.activeImageIndex : 0;
+      const targetImg = product.images[idx] || product.images[0];
+      if (typeof targetImg === "object" && targetImg !== null) {
+        selectedImage = targetImg.url || "";
+        selectedImageId = targetImg.id || "";
+      } else if (typeof targetImg === "string") {
+        selectedImage = targetImg;
+      }
+    }
+
+    // If a color was chosen and it has an associated image URL:
+    if (!selectedImage && resolvedColor && typeof resolvedColor === "object" && resolvedColor.image) {
+      selectedImage = resolvedColor.image;
+    }
+
+    if (!selectedImage) {
+      selectedImage = resolvedCustom?.image || product.image || "";
+    }
+
+    // If color was not given (or was just a string name), attempt to resolve full color object from product.colors
+    if (selectedImage && (!resolvedColor || typeof resolvedColor === "string")) {
+      const matchByImg = Array.isArray(product.colors)
+        ? product.colors.find((c) => c.image === selectedImage)
+        : null;
+      if (matchByImg) {
+        resolvedColor = matchByImg;
+      } else if (typeof resolvedColor === "string") {
+        const matchByName = Array.isArray(product.colors)
+          ? product.colors.find((c) => c.name === resolvedColor || c.colorCode === resolvedColor)
+          : null;
+        if (matchByName) {
+          resolvedColor = matchByName;
+        }
+      }
+    }
+
+    // Build unique variant key so different colors / images don't overwrite each other in the cart
+    const colorKey = typeof resolvedColor === "object" && resolvedColor !== null
+      ? (resolvedColor.colorCode || resolvedColor.name || "")
+      : String(resolvedColor || "");
+    const imgKey = selectedImage ? selectedImage.split("/").pop()?.replace(/\.[^/.]+$/, "") || "" : "";
+    const variantKey = selectedImageId || (colorKey || imgKey ? `${colorKey}_${imgKey}`.replace(/[^a-zA-Z0-9_-]/g, "") : "");
+    const cartItemId = explicitCartItemId || (isCustom ? `${product.id}_${Date.now()}` : (variantKey ? `${product.id}_${variantKey}` : product.id));
 
     const item = {
       id: product.id,
@@ -48,17 +122,20 @@ export function CartProvider({ children }) {
       rawName: product.rawName,
       price: Number(product.price || 0),
       currency: product.currency || "EGP",
-      image: resolvedCustom?.image || product.image || "",
+      image: selectedImage || resolvedColor?.image || resolvedCustom?.image || product.image || "",
+      selectedImage: selectedImage || product.image || "",
+      selectedImageId: selectedImageId || "",
       sku: product.sku || "",
+      color: resolvedColor,
       customDesign: resolvedCustom,
     };
 
     setCart((prev) => {
       if (!isCustom) {
-        const existing = prev.find((p) => (p.cartItemId || p.id) === item.id && !p.customDesign);
+        const existing = prev.find((p) => (p.cartItemId || p.id) === item.cartItemId && !p.customDesign);
         if (existing) {
           return prev.map((p) =>
-            (p.cartItemId || p.id) === item.id && !p.customDesign
+            (p.cartItemId || p.id) === item.cartItemId && !p.customDesign
               ? { ...p, ...item, quantity: p.quantity + quantity }
               : p,
           );
@@ -95,7 +172,27 @@ export function CartProvider({ children }) {
     );
   };
 
-  const clearCart = () => setCart([]);
+  const clearCart = () => {
+    try {
+      if (Array.isArray(cart)) {
+        cart.forEach((item) => {
+          const id = item.cartItemId || item.id;
+          if (id) deleteCardDraftImages(id).catch(() => {});
+        });
+      }
+    } catch (e) {}
+
+    setCart([]);
+    try {
+      localStorage.removeItem("thenith_cart");
+      localStorage.setItem("thenith_cart", JSON.stringify([]));
+      localStorage.removeItem("thenith_custom_card_studio_state_v2");
+      window.dispatchEvent(new Event("storage"));
+      window.dispatchEvent(new CustomEvent("cart-cleared"));
+    } catch (e) {
+      console.warn("[cart] clearCart error:", e);
+    }
+  };
 
   const totalItems = cart.reduce((acc, item) => acc + item.quantity, 0);
   const totalPrice = cart.reduce((acc, item) => acc + (item.price * item.quantity), 0);

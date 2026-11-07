@@ -9,6 +9,14 @@ import {
   ArrowRight,
   ArrowLeft,
   CheckCircle2,
+  FileText,
+  Check,
+  ExternalLink,
+  Loader2,
+  X,
+  Sparkles,
+  ShieldCheck,
+  Clock,
 } from "lucide-react";
 import {
   completeRegistration,
@@ -18,6 +26,7 @@ import {
   saveAccessToken,
 } from "../../services/authApi.js";
 import GlobalLogo from "../../../components/GlobalLogo.jsx";
+import { publicClient } from "../../../api/client.js";
 import ErrorNotice from "../../../components/ErrorNotice.jsx";
 import { getLocalizedErrorMessage } from "../../../utils/errorHandling.js";
 import { generateGenderAvatar } from "../../../utils/avatarGenerator.js";
@@ -42,12 +51,66 @@ export default function Auth({ t, language, onLogin, forceMode }) {
   const [error, setError] = useState("");
   const [verificationToken, setVerificationToken] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [agreePolicies, setAgreePolicies] = useState(false);
+  const [showPoliciesModal, setShowPoliciesModal] = useState(false);
+  const [policiesList, setPoliciesList] = useState([]);
+  const [loadingPolicies, setLoadingPolicies] = useState(false);
+  const [activePolicyIndex, setActivePolicyIndex] = useState(0);
+
+  useEffect(() => {
+    if (showPoliciesModal && policiesList.length === 0) {
+      setLoadingPolicies(true);
+      publicClient
+        .get("/policies?full=true")
+        .then(async (res) => {
+          let list = Array.isArray(res.data?.policies)
+            ? res.data.policies.filter((p) => p.isActive !== false)
+            : [];
+
+          // If any policy has missing sections, fetch in parallel to ensure complete data
+          const missingSections = list.some(
+            (p) => !Array.isArray(p.sections) || p.sections.length === 0
+          );
+          if (missingSections && list.length > 0) {
+            try {
+              const fullDetails = await Promise.all(
+                list.map(async (p) => {
+                  if (Array.isArray(p.sections) && p.sections.length > 0) return p;
+                  try {
+                    const detailRes = await publicClient.get(`/policies/${p.slug}`);
+                    return detailRes.data?.policy || p;
+                  } catch {
+                    return p;
+                  }
+                })
+              );
+              list = fullDetails;
+            } catch {
+              // fallback to base list
+            }
+          }
+
+          setPoliciesList(list);
+        })
+        .catch(() => {})
+        .finally(() => setLoadingPolicies(false));
+    }
+  }, [showPoliciesModal, policiesList.length]);
 
   const handleGoogleSuccess = async (credentialResponse) => {
+    if (mode === "REGISTER" && !agreePolicies) {
+      setError(
+        isRtl
+          ? "يجب الموافقة على سياسة الاستخدام والشروط أولاً للمتابعة"
+          : "You must agree to the Terms of Service to continue"
+      );
+      return;
+    }
     try {
       setIsSubmitting(true);
       setError("");
-      const data = await googleLogin(credentialResponse?.credential);
+      const appliedRef = referralCode || undefined;
+      const data = await googleLogin(credentialResponse?.credential, appliedRef);
 
       if (data.requiresRegistration) {
         setVerificationToken(data.verificationToken);
@@ -64,13 +127,39 @@ export default function Auth({ t, language, onLogin, forceMode }) {
     }
   };
 
-  const isRtl = language === "ar";
+    const isRtl = language === "ar";
   const dir = isRtl ? "rtl" : "ltr";
 
+  // Capture referral code from URL or persisted in localStorage
+  const [referralCode, setReferralCode] = useState(() => {
+    try {
+      const urlParams = new URLSearchParams(window.location.search);
+      const ref = urlParams.get("ref");
+      if (ref) {
+        const clean = ref.trim().toUpperCase();
+        try { localStorage.setItem("thenith_referral_code", clean); } catch {}
+        return clean;
+      }
+      return localStorage.getItem("thenith_referral_code") || "";
+    } catch {
+      return "";
+    }
+  });
+
   useEffect(() => {
-    const title = mode === "LOGIN" ? t("login") : t("createAccount");
-    document.title = `Thenith | ${title}`;
-  }, [mode, t]);
+    const isAr = language === "ar";
+    const title = mode === "LOGIN" 
+      ? (isAr ? "تسجيل الدخول" : "Sign In") 
+      : (isAr ? "إنشاء بروفايل رقمي جديد" : "Create Your Digital Profile");
+    const brand = (typeof window !== "undefined" && window.__SITE_NAME__) || "Thenith";
+    
+    const pageKey = mode === "LOGIN" ? "login" : "signup";
+    const customPageSeo = typeof window !== "undefined" && window.__SITE_SETTINGS__?.seo_pages?.[pageKey];
+    const langKey = isAr ? "ar" : "en";
+    const customTitle = customPageSeo?.[langKey]?.title || customPageSeo?.title;
+
+    document.title = customTitle || `${title} | ${brand}`;
+  }, [mode, language]);
 
   const resetFlow = (newMode) => {
     setMode(newMode);
@@ -78,6 +167,7 @@ export default function Auth({ t, language, onLogin, forceMode }) {
     setAuthEmail("");
     setOtp("");
     setFormData({ fullName: "", jobTitle: "", company: "", bio: "" });
+    setAgreePolicies(false);
     setRegStepIndex(0);
     setError("");
   };
@@ -87,6 +177,14 @@ export default function Auth({ t, language, onLogin, forceMode }) {
     const cleaned = authEmail.trim();
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleaned)) {
       setError(t("emailInvalid"));
+      return;
+    }
+    if (mode === "REGISTER" && !agreePolicies) {
+      setError(
+        isRtl
+          ? "يجب الموافقة على سياسة الاستخدام والشروط للمتابعة"
+          : "You must agree to the Terms of Service to continue"
+      );
       return;
     }
     setError("");
@@ -186,13 +284,18 @@ export default function Auth({ t, language, onLogin, forceMode }) {
     setIsSubmitting(true);
     setError("");
     try {
+      const appliedRefCode = referralCode || undefined;
+      const detectedReferrer = typeof document !== "undefined" && document.referrer ? document.referrer : "Direct";
       const result = await completeRegistration({
         verificationToken,
         name: formData.fullName.trim(),
         jobTitle: formData.jobTitle.trim(),
         company: formData.company.trim(),
         bio: formData.bio.trim(),
+        referralCode: appliedRefCode ? appliedRefCode.trim().toUpperCase() : undefined,
+        referrer: detectedReferrer,
       });
+      // Keep referral code in localStorage so it automatically applies on subscriptions/checkout
       onLogin(result.user);
     } catch (registrationError) {
       setError(getLocalizedErrorMessage(registrationError, language));
@@ -218,6 +321,18 @@ export default function Auth({ t, language, onLogin, forceMode }) {
               {mode === "LOGIN" ? t("welcomeBack") : t("createNewAccount")}
             </p>
           </div>
+
+          {/* Referral Banner */}
+          {referralCode && (
+            <div className="mb-4 flex items-center gap-2 p-3.5 rounded-2xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200/80 dark:border-emerald-800 text-xs font-bold text-emerald-700 dark:text-emerald-300 shadow-sm animate-fade-in">
+              <Sparkles className="w-4 h-4 shrink-0 text-emerald-500" />
+              <span>
+                {isRtl
+                  ? `كود الإحالة مفعّل (${referralCode}): ستحصل على خصم 10% على أول اشتراك!`
+                  : `Referral code applied (${referralCode}): 10% off your first subscription!`}
+              </span>
+            </div>
+          )}
 
           {/* Mode Toggle (shown only on EMAIL step) */}
           {step === "EMAIL" && (
@@ -322,11 +437,40 @@ export default function Auth({ t, language, onLogin, forceMode }) {
                       />
                     </div>
 
+                    {/* Required Policies Checkbox for Sign-up */}
+                    {mode === "REGISTER" && (
+                      <div className="flex items-start gap-2.5 pt-1 text-xs">
+                        <input
+                          type="checkbox"
+                          id="agreePolicies"
+                          required
+                          checked={agreePolicies}
+                          onChange={(e) => setAgreePolicies(e.target.checked)}
+                          className="mt-0.5 w-4 h-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer accent-indigo-600 shrink-0"
+                        />
+                        <label
+                          htmlFor="agreePolicies"
+                          className="text-slate-600 dark:text-slate-400 select-none leading-relaxed"
+                        >
+                          <span>{isRtl ? "أوافق على " : "I agree to "}</span>
+                          <button
+                            type="button"
+                            onClick={() => setShowPoliciesModal(true)}
+                            className="font-bold text-indigo-600 dark:text-indigo-400 hover:underline inline-flex items-center gap-1 mx-0.5 cursor-pointer"
+                          >
+                            <span>{isRtl ? "شروط وسياسة الاستخدام" : "Terms & Policies"}</span>
+                            <ExternalLink className="w-3 h-3" />
+                          </button>
+                          <span className="text-rose-500 font-bold">*</span>
+                        </label>
+                      </div>
+                    )}
+
                     <ErrorNotice error={error} language={language} />
 
                     <button
                       type="submit"
-                      disabled={!authEmail.trim() || isSubmitting}
+                      disabled={!authEmail.trim() || isSubmitting || (mode === "REGISTER" && !agreePolicies)}
                       className="flex w-full items-center justify-center gap-2 rounded-2xl bg-indigo-600 py-3.5 text-sm font-black text-white transition-all hover:bg-indigo-700 disabled:bg-slate-100 disabled:text-slate-400 dark:disabled:bg-slate-800 dark:disabled:text-slate-500"
                     >
                       {t("continue")}
@@ -654,6 +798,206 @@ export default function Auth({ t, language, onLogin, forceMode }) {
               />
             ))}
           </div>
+
+          {/* Policies Modal */}
+          <AnimatePresence>
+            {showPoliciesModal && (
+              <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/70 backdrop-blur-sm">
+                <motion.div
+                  initial={{ scale: 0.95, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  exit={{ scale: 0.95, opacity: 0 }}
+                  dir={dir}
+                  className="w-full max-w-3xl rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-5 sm:p-7 shadow-2xl overflow-hidden flex flex-col max-h-[88vh]"
+                >
+                  {/* Modal Header */}
+                  <div className="flex items-center justify-between pb-4 border-b border-slate-100 dark:border-slate-800 shrink-0">
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-10 h-10 rounded-2xl bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 flex items-center justify-center">
+                        <FileText className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <h3 className="font-extrabold text-slate-900 dark:text-white text-base sm:text-lg">
+                          {isRtl ? "سياسات وشروط الاستخدام" : "Terms of Service & Policies"}
+                        </h3>
+                        <p className="text-xs text-slate-500 dark:text-slate-400">
+                          {isRtl ? "تصفح جميع السياسات والشروط القانونية للمنصة" : "Review all platform legal terms and policies"}
+                        </p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setShowPoliciesModal(false)}
+                      className="p-2 rounded-xl text-slate-400 hover:text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+                    >
+                      <X className="w-5 h-5" />
+                    </button>
+                  </div>
+
+                  {/* Quick-Jump Sticky Navigation Pills */}
+                  {!loadingPolicies && policiesList.length > 1 && (
+                    <div className="flex items-center gap-2 py-3 overflow-x-auto border-b border-slate-100 dark:border-slate-800 shrink-0 no-scrollbar">
+                      {policiesList.map((p, idx) => {
+                        const title =
+                          typeof p.title === "object"
+                            ? p.title[language] || p.title.ar || p.title.en
+                            : p.title;
+                        return (
+                          <button
+                            key={p._id || idx}
+                            type="button"
+                            onClick={() => {
+                              const el = document.getElementById(`modal-policy-${p.slug || idx}`);
+                              if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+                            }}
+                            className="px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all shrink-0 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-indigo-50 dark:hover:bg-indigo-950 hover:text-indigo-600 dark:hover:text-indigo-400 cursor-pointer"
+                          >
+                            {title}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {/* Modal Body - Scrollable continuous feed of all policies */}
+                  <div className="py-4 flex-1 overflow-y-auto space-y-10 pr-1 pl-1 scroll-smooth">
+                    {loadingPolicies ? (
+                      <div className="py-20 text-center text-slate-400 flex flex-col items-center justify-center">
+                        <Loader2 className="w-8 h-8 text-indigo-500 animate-spin mb-3" />
+                        <span className="text-xs font-bold">
+                          {isRtl ? "جاري تحميل جميع السياسات والشروط..." : "Loading all policies and terms..."}
+                        </span>
+                      </div>
+                    ) : policiesList.length === 0 ? (
+                      <div className="py-10 text-center text-slate-600 dark:text-slate-300 text-xs leading-relaxed max-w-md mx-auto">
+                        <p className="font-bold text-slate-800 dark:text-white mb-2">
+                          {isRtl ? "شروط الاستخدام الأساسية" : "Standard Terms of Service"}
+                        </p>
+                        {isRtl
+                          ? "باستخدامك لمنصة Thenith، فإنك توافق على الالتزام بالقوانين المعمول بها وحماية سرية بيانات حسابك وعدم استخدام المنصة في أي أنشطة محظورة أو تنتهك حقوق الملكية الفكرية والخصوصية."
+                          : "By using Thenith, you agree to comply with applicable laws, safeguard your account credentials, and refrain from prohibited activities or intellectual property infringement."}
+                      </div>
+                    ) : (
+                      <div className="space-y-10">
+                        {policiesList.map((p, pIdx) => {
+                          const title =
+                            typeof p.title === "object"
+                              ? p.title[language] || p.title.ar || p.title.en
+                              : p.title;
+                          const desc =
+                            typeof p.description === "object"
+                              ? p.description[language] || p.description.ar || p.description.en
+                              : p.description;
+                          const sections = Array.isArray(p.sections) ? p.sections : [];
+
+                          return (
+                            <section
+                              key={p._id || p.slug || pIdx}
+                              id={`modal-policy-${p.slug || pIdx}`}
+                              className="scroll-mt-4 space-y-4"
+                            >
+                              {/* Policy Header Banner - Exactly matching Panel style */}
+                              <div className="relative overflow-hidden rounded-2xl border border-slate-200/90 dark:border-slate-800/90 bg-slate-50/70 dark:bg-slate-950/60 p-4 sm:p-5">
+                                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                                  <div className="space-y-1">
+                                    <h4 className="text-base sm:text-lg font-black text-slate-900 dark:text-white">
+                                      {title}
+                                    </h4>
+                                    {desc && (
+                                      <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed max-w-xl">
+                                        {desc}
+                                      </p>
+                                    )}
+                                  </div>
+
+                                  {p.updatedAt && (
+                                    <div className="flex items-center gap-1.5 text-[11px] font-medium text-slate-400 dark:text-slate-500 shrink-0 self-start sm:self-auto">
+                                      <Clock className="h-3.5 w-3.5" />
+                                      <span>
+                                        {isRtl
+                                          ? `آخر تحديث: ${new Date(p.updatedAt).toLocaleDateString("ar-EG-u-nu-latn")}`
+                                          : `Updated: ${new Date(p.updatedAt).toLocaleDateString("en-US")}`}
+                                      </span>
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+
+                              {/* Policy Content Sections - Exactly matching Panel style */}
+                              {sections.length === 0 ? (
+                                <div className="rounded-2xl border border-dashed border-slate-200 dark:border-slate-800 p-6 text-center text-xs text-slate-400">
+                                  {isRtl ? "لم يتم إضافة أقسام لهذه السياسة بعد." : "No sections added to this policy yet."}
+                                </div>
+                              ) : (
+                                <div className="space-y-3">
+                                  {sections.map((sec, sIdx) => {
+                                    const sTitle =
+                                      typeof sec.heading === "object"
+                                        ? sec.heading[language] || sec.heading.ar || sec.heading.en
+                                        : sec.heading;
+                                    const sContent =
+                                      typeof sec.content === "object"
+                                        ? sec.content[language] || sec.content.ar || sec.content.en
+                                        : sec.content;
+
+                                    return (
+                                      <article
+                                        key={sec._id || sIdx}
+                                        className="rounded-2xl border border-slate-200/80 dark:border-slate-800/80 bg-white dark:bg-slate-900/60 p-4 sm:p-5 overflow-hidden break-words shadow-2xs"
+                                      >
+                                        {sTitle && (
+                                          <h5 className="mb-2.5 flex items-center gap-2 text-sm sm:text-base font-bold text-slate-900 dark:text-white">
+                                            <span className="h-4 w-1.5 rounded-full bg-indigo-600 dark:bg-indigo-500 shrink-0" />
+                                            <span>{sTitle}</span>
+                                          </h5>
+                                        )}
+
+                                        <div
+                                          className="prose dark:prose-invert max-w-none text-xs sm:text-sm font-normal leading-relaxed text-slate-700 dark:text-slate-300 [&_a]:text-indigo-600 dark:[&_a]:text-indigo-400 [&_a]:underline [&_blockquote]:my-2.5 [&_blockquote]:border-s-4 [&_blockquote]:border-indigo-500 [&_blockquote]:bg-slate-50 dark:[&_blockquote]:bg-slate-800/40 [&_blockquote]:p-3 [&_blockquote]:rounded-r-xl [&_blockquote]:text-slate-600 dark:[&_blockquote]:text-slate-300 [&_ol]:my-2 [&_ol]:list-decimal [&_ol]:ps-5 [&_p]:mb-2.5 [&_strong]:font-bold [&_strong]:text-slate-900 dark:[&_strong]:text-white [&_ul]:my-2 [&_ul]:list-disc [&_ul]:ps-5"
+                                          dangerouslySetInnerHTML={{ __html: sContent || "" }}
+                                        />
+                                      </article>
+                                    );
+                                  })}
+                                </div>
+                              )}
+
+                              {pIdx < policiesList.length - 1 && (
+                                <div className="pt-6 border-b border-dashed border-slate-200 dark:border-slate-800" />
+                              )}
+                            </section>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Modal Footer */}
+                  <div className="pt-4 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between gap-3 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => setShowPoliciesModal(false)}
+                      className="px-4 py-2.5 rounded-2xl border border-slate-200 dark:border-slate-800 text-xs font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
+                    >
+                      {isRtl ? "إغلاق" : "Close"}
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setAgreePolicies(true);
+                        setShowPoliciesModal(false);
+                      }}
+                      className="flex items-center gap-1.5 px-5 py-2.5 rounded-2xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-md shadow-indigo-600/20 active:scale-95 cursor-pointer"
+                    >
+                      <Check className="w-4 h-4" />
+                      <span>{isRtl ? "أوافق على الشروط والسياسات" : "I Agree to Terms"}</span>
+                    </button>
+                  </div>
+                </motion.div>
+              </div>
+            )}
+          </AnimatePresence>
         </div>
       </div>
     </GoogleOAuthProvider>

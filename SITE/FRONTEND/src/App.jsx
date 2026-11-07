@@ -25,6 +25,56 @@ function ToastManager() {
   return null;
 }
 
+// --- Global Single Support Toast for Public Pages ---
+function GlobalSupportToast() {
+  useEffect(() => {
+    const handleSupportNewMessage = () => {
+      // If user is inside dashboard /u/, Dashboard.jsx handles its own tab navigation
+      if (window.location.pathname.startsWith("/u/")) return;
+
+      const isAr = document.documentElement.dir === "rtl" || document.documentElement.lang === "ar";
+
+      toast.custom(
+        (t) => (
+          <div
+            dir={isAr ? "rtl" : "ltr"}
+            className={`pointer-events-auto transition-all duration-300 transform ${
+              t.visible ? "opacity-100 translate-y-0 scale-100" : "opacity-0 -translate-y-4 scale-95"
+            }`}
+            style={{ marginTop: "16px" }}
+          >
+            <div className="flex items-center gap-3.5 px-4 py-2.5 rounded-full bg-slate-900/95 dark:bg-slate-800/95 text-white backdrop-blur-md shadow-xl border border-white/10 ring-1 ring-black/10 font-sans">
+              <span className="text-sm font-semibold tracking-wide">
+                {isAr ? "رسالة جديدة من الدعم الفني" : "New message from Support"}
+              </span>
+              <button
+                type="button"
+                onClick={() => {
+                  toast.dismiss(t.id);
+                  window.dispatchEvent(new CustomEvent("open-support-widget"));
+                }}
+                className="px-3.5 py-1 rounded-full bg-indigo-600 hover:bg-indigo-500 active:scale-95 text-white text-xs font-bold transition-all shrink-0 shadow-sm"
+              >
+                {isAr ? "الذهاب للرسالة" : "Go to message"}
+              </button>
+            </div>
+          </div>
+        ),
+        {
+          id: "support-message-alert",
+          duration: 7000,
+          position: "top-center",
+        }
+      );
+    };
+
+    window.addEventListener("support-new-message", handleSupportNewMessage);
+    return () => window.removeEventListener("support-new-message", handleSupportNewMessage);
+  }, []);
+
+  return null;
+}
+
 export default function App() {
   return (
     <GlobalLanguageProvider>
@@ -41,6 +91,7 @@ export default function App() {
                 }}
               />
               <ToastManager />
+              <GlobalSupportToast />
               <SupportWidget />
               <AppRoutes />
             </CartProvider>

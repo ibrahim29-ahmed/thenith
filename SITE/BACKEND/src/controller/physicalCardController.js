@@ -43,7 +43,7 @@ export const resolvePublicCard = asyncHandler(async (request, response) => {
       { cardId: { $in: candidateIds } },
     ],
   })
-    .populate("userId", "name username avatar isActive isEmailVerified")
+    .populate("userId", "name username avatar isActive isEmailVerified publicId activeCardId")
     .populate("profileId", "name publicId personal isActive");
 
   // Case 1: Card not found -> 404
@@ -70,27 +70,42 @@ export const resolvePublicCard = asyncHandler(async (request, response) => {
     let rawTarget = card.targetUrl.trim();
     let destination = rawTarget;
 
-    if (/^https?:\/\//i.test(rawTarget)) {
-      destination = rawTarget;
-    } else if (rawTarget.startsWith("/")) {
-      destination = rawTarget;
-    } else if (rawTarget.includes("thenith.com")) {
-      destination = "https://" + rawTarget.replace(/^https?:\/\//i, "");
-    } else {
-      // Check if target is a User publicId or username
-      const targetUser = await User.findOne({
-        $or: [{ publicId: rawTarget }, { username: rawTarget.toLowerCase() }],
-      });
-      if (targetUser) {
-        destination = `/p/${targetUser.publicId}`;
-      } else {
-        const targetProfile = await Card.findOne({ publicId: rawTarget });
-        if (targetProfile) {
-          destination = `/p/${targetProfile.publicId}`;
+    try {
+      if (/^https?:\/\//i.test(rawTarget)) {
+        const u = new URL(rawTarget);
+        if (
+          u.hostname === "localhost" ||
+          u.hostname === "127.0.0.1" ||
+          u.hostname.includes("thenith.com")
+        ) {
+          destination = u.pathname + u.search + u.hash;
         } else {
-          destination = `/p/${rawTarget}`;
+          destination = rawTarget;
+        }
+      } else if (rawTarget.startsWith("/")) {
+        destination = rawTarget;
+      } else if (rawTarget.includes("thenith.com")) {
+        const clean = rawTarget.replace(/^https?:\/\//i, "");
+        const pathPart = clean.substring(clean.indexOf("/"));
+        destination = pathPart && pathPart.startsWith("/") ? pathPart : "https://" + clean;
+      } else {
+        // Check if target is a User publicId or username
+        const targetUser = await User.findOne({
+          $or: [{ publicId: rawTarget }, { username: rawTarget.toLowerCase() }],
+        });
+        if (targetUser) {
+          destination = `/p/${targetUser.publicId}`;
+        } else {
+          const targetProfile = await Card.findOne({ publicId: rawTarget });
+          if (targetProfile) {
+            destination = `/p/${targetProfile.publicId}`;
+          } else {
+            destination = `/p/${rawTarget}`;
+          }
         }
       }
+    } catch {
+      destination = rawTarget;
     }
 
     if (request.accepts("html") && !request.xhr && !request.headers["x-requested-with"] && !request.headers["accept"]?.includes("application/json")) {
@@ -134,8 +149,12 @@ export const resolvePublicCard = asyncHandler(async (request, response) => {
       });
     }
 
-    // Direct Profile Public ID from database (user.publicId)
-    const profilePublicId = owner.publicId || profile?.publicId;
+    // Direct Profile Public ID from database (user.publicId or active profile publicId)
+    let profilePublicId = owner.publicId || profile?.publicId;
+    if (!profilePublicId && owner._id) {
+      const userCard = await Card.findOne({ userId: owner._id, isActive: true });
+      profilePublicId = userCard?.publicId;
+    }
     const dest = `/p/${profilePublicId}`;
 
     if (request.accepts("html") && !request.xhr && !request.headers["x-requested-with"] && !request.headers["accept"]?.includes("application/json")) {
@@ -292,7 +311,7 @@ export const listMyPhysicalCards = asyncHandler(async (request, response) => {
   const user = request.user;
 
   const cards = await PhysicalCard.find({ userId: user._id })
-    .select("cardId publicId status cardType color targetUrl claimedAt profileId")
+    .select("cardId publicId status cardType color orderColor productName targetUrl claimedAt profileId")
     .populate("profileId", "name publicId personal.avatar personal.title personal.company")
     .sort({ claimedAt: -1 })
     .lean();

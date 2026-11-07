@@ -1,7 +1,9 @@
 import { useState, useEffect, useRef } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 import { AnimatePresence, motion } from "motion/react";
 import {
   BadgeDollarSign,
+  Gift,
   CreditCard,
   Home,
   Headset,
@@ -10,6 +12,9 @@ import {
   Sparkles,
   User,
   Wifi,
+  X,
+  ArrowLeft,
+  ArrowRight,
 } from "lucide-react";
 import { isFeatureEnabled } from "../config/features.js";
 import { useDashboardData } from "../hooks/useDashboardData.js";
@@ -33,8 +38,86 @@ import { checkUsername } from "../services/authApi.js";
 import { useCart } from "../../context/CartContext.jsx";
 import api from "../../api/index.js";
 import { toast } from "react-hot-toast";
+import { publicClient } from "../../api/client.js";
+import ReferralsPage from "./dashboard/ReferralsPage.jsx";
+import PanelPoliciesPage from "./dashboard/PanelPoliciesPage.jsx";
+import {
+  DashboardHomeSkeleton,
+  SubscriptionsSkeleton,
+  CardsSkeleton,
+  ProductsSkeleton,
+  PoliciesSkeleton,
+  SupportSkeleton,
+} from "./skeletons/index.js";
+
+// Card with Pen Icon (أيقونة بطاقة مع قلم لتخصيص وتصميم الكارت)
+export function CardWithPenIcon({ className = "h-4 w-4", ...props }) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+      {...props}
+    >
+      <path d="M2 9V7a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v2" />
+      <path d="M2 13v4a2 2 0 0 0 2 2h8" />
+      <line x1="2" x2="16" y1="9" y2="9" />
+      <line x1="6" x2="9" y1="14" y2="14" />
+      <path d="m14 17.5 5.5-5.5a1.414 1.414 0 0 1 2 2L16 19.5l-3.5 1z" />
+      <line x1="17.5" y1="14" x2="19.5" y2="16" />
+    </svg>
+  );
+}
+
+const VALID_TABS = [
+  "home",
+  "cards",
+  "messages",
+  "products",
+  "custom-card",
+  "subscriptions",
+  "profile",
+  "link-card",
+  "support",
+  "cart",
+  "checkout",
+  "cardEdit",
+  "policies",
+  "referrals",
+];
+
+function getTabFromLocation(pathname, search) {
+  const cleanPath = (pathname || "").replace(/\/+$/, "");
+  const segments = cleanPath.split("/").filter(Boolean);
+
+  // Check segments from last to first (e.g. /u/products or /u/adam/products)
+  for (let i = segments.length - 1; i >= 0; i--) {
+    const seg = segments[i].toLowerCase();
+    if (VALID_TABS.includes(seg)) {
+      return seg;
+    }
+  }
+
+  // Fallback to query param ?tab=
+  if (search) {
+    const params = new URLSearchParams(search);
+    const tab = params.get("tab");
+    if (tab && VALID_TABS.includes(tab.toLowerCase())) {
+      return tab.toLowerCase();
+    }
+  }
+
+  return "home";
+}
 
 export default function Dashboard({ onLogout, onDeleteAccount }) {
+  const location = useLocation();
+  const navigate = useNavigate();
   const { language, toggleLanguage, t } = useLanguage();
   const { theme, toggleTheme } = useTheme();
   const dashboard = useDashboardData();
@@ -57,16 +140,36 @@ export default function Dashboard({ onLogout, onDeleteAccount }) {
   const [linkDraft, setLinkDraft] = useState({ name: "", url: "" });
   const [supportUnreadEventCount, setSupportUnreadEventCount] = useState(0);
 
-  const searchParams = new URLSearchParams(window.location.search);
-  const initialTab = searchParams.get("tab") || "home";
+  const [localTab, setLocalTab] = useState(null);
+  const activeTab = localTab || getTabFromLocation(location.pathname, location.search);
 
-  const [activeTab, setActiveTab] = useState(initialTab);
+  useEffect(() => {
+    setLocalTab(null);
+  }, [location.pathname, location.search]);
   const [selectedCustomProduct, setSelectedCustomProduct] = useState(null);
   const [dragItem, setDragItem] = useState(null);
   const [pendingPayment, setPendingPayment] = useState(null);
   const [cancelingPayment, setCancelingPayment] = useState(false);
 
   const [supportNotifications, setSupportNotifications] = useState([]);
+  const [policies, setPolicies] = useState([]);
+  const [selectedPolicySlug, setSelectedPolicySlug] = useState("");
+
+  useEffect(() => {
+    let mounted = true;
+    publicClient
+      .get("/policies")
+      .then((res) => {
+        if (mounted && Array.isArray(res.data?.policies)) {
+          setPolicies(res.data.policies.filter((p) => p.isActive !== false));
+        }
+      })
+      .catch(() => {});
+    return () => {
+      mounted = false;
+    };
+  }, []);
+  
 
   // Fetch notifications on mount
   useEffect(() => {
@@ -83,78 +186,78 @@ export default function Dashboard({ onLogout, onDeleteAccount }) {
   const supportUnread = Math.max(supportUnreadEventCount, supportNotifications.filter(n => n.type === "support_message").length);
 
   const unreadToastShownRef = useRef(false);
-
+  const activeTabRef = useRef(activeTab);
   useEffect(() => {
-    if (supportUnread > 0 && !unreadToastShownRef.current) {
-      unreadToastShownRef.current = true;
-      const msgTitle = language === "ar" ? "لديك رسائل غير مقروءة من الدعم الفني" : "You have unread support messages";
-      toast.custom((t) => (
+    activeTabRef.current = activeTab;
+  }, [activeTab]);
+
+  const showSupportAlert = () => {
+    // If the user is currently viewing the support chat, skip toast
+    if (activeTabRef.current === "support") return;
+
+    const isAr = language === "ar";
+
+    toast.custom(
+      (t) => (
         <div
-          dir={language === "ar" ? "rtl" : "ltr"}
-          className={`${t.visible ? 'animate-enter' : 'animate-leave'} max-w-[calc(100vw-32px)] sm:max-w-sm w-full bg-white dark:bg-slate-900 shadow-xl border border-indigo-100 dark:border-indigo-900 rounded-2xl pointer-events-auto flex ring-1 ring-black ring-opacity-5 relative overflow-hidden`}
-          style={{ marginTop: '65px', marginRight: '16px' }}
+          dir={isAr ? "rtl" : "ltr"}
+          className={`pointer-events-auto transition-all duration-300 transform ${
+            t.visible ? "opacity-100 translate-y-0 scale-100" : "opacity-0 -translate-y-4 scale-95"
+          }`}
+          style={{ marginTop: "16px" }}
         >
-          <div className="absolute top-0 start-0 w-1.5 h-full bg-indigo-500"></div>
-          <div className="flex-1 w-0 p-4">
-            <div className="flex items-start">
-              <div className="flex-shrink-0 pt-0.5">
-                <div className="w-10 h-10 rounded-full bg-indigo-50 dark:bg-indigo-500/20 flex items-center justify-center">
-                  <Headset className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
-                </div>
-              </div>
-              <div className="ms-3 flex-1">
-                <p className="text-sm font-bold text-slate-900 dark:text-white mt-2">
-                  {msgTitle}
-                </p>
-              </div>
-            </div>
-          </div>
-          <div className="flex border-s border-slate-100 dark:border-slate-800">
+          <div className="flex items-center gap-3.5 px-4 py-2.5 rounded-full bg-slate-900/95 dark:bg-slate-800/95 text-white backdrop-blur-md shadow-xl border border-white/10 ring-1 ring-black/10">
+            <span className="text-sm font-semibold tracking-wide">
+              {isAr ? "رسالة جديدة من الدعم الفني" : "New message from Support"}
+            </span>
             <button
+              type="button"
               onClick={() => {
                 toast.dismiss(t.id);
                 changeMainTab("support");
               }}
-              className="w-full border border-transparent rounded-none rounded-e-2xl p-4 flex items-center justify-center text-sm font-bold text-indigo-600 dark:text-indigo-400 hover:text-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-slate-50 dark:bg-slate-800/50 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+              className="px-3.5 py-1 rounded-full bg-indigo-600 hover:bg-indigo-500 active:scale-95 text-white text-xs font-bold transition-all shrink-0 shadow-sm"
             >
-              {language === "ar" ? "عرض" : "View"}
+              {isAr ? "الذهاب للرسالة" : "Go to message"}
             </button>
           </div>
         </div>
-      ), { duration: 5000, position: 'top-right' });
+      ),
+      {
+        id: "support-message-alert",
+        duration: 7000,
+        position: "top-center",
+      }
+    );
+  };
+
+  useEffect(() => {
+    if (supportUnread > 0 && !unreadToastShownRef.current && activeTab !== "support") {
+      unreadToastShownRef.current = true;
+      showSupportAlert(
+        language === "ar"
+          ? "لديك رسائل غير مقروءة بانتظارك في المحادثة"
+          : "You have unread support messages waiting for you"
+      );
     }
-  }, [supportUnread, language]);
+  }, [supportUnread, language, activeTab]);
 
   useEffect(() => {
     const handleSupportUnread = (e) => setSupportUnreadEventCount(e.detail);
     const handleSupportNewMessage = async (e) => {
-      unreadToastShownRef.current = true; // Prevent welcome toast
-      const msgTitle = language === "ar" ? "رد جديد من الدعم الفني" : "New reply from Support";
-      toast(msgTitle, {
-        icon: '💬',
-        duration: 4000,
-        position: 'top-right',
-        style: {
-          marginTop: '65px',
-          marginRight: '20px',
-          marginLeft: '0px',
-          maxWidth: 'calc(100vw - 40px)',
-          borderRadius: '12px',
-          background: '#4f46e5',
-          color: '#fff',
-          fontSize: '14px',
-          direction: language === "ar" ? "rtl" : "ltr",
-        },
-      });
+      unreadToastShownRef.current = true;
+      const content = e.detail?.content || "";
+      showSupportAlert(content);
+
       try {
+        const msgTitle = language === "ar" ? "رد جديد من الدعم الفني" : "New reply from Support";
         const notif = await api.notifications.create({
           type: "support_message",
           title: msgTitle,
-          message: e.detail.content,
+          message: content,
         });
         setSupportNotifications((prev) => [notif, ...prev]);
-      } catch (err) {
-      }
+      } catch (err) {}
     };
 
     const handleAdminPushNotification = async (e) => {
@@ -162,17 +265,16 @@ export default function Dashboard({ onLogout, onDeleteAccount }) {
       toast(notif.title, {
         icon: '🔔',
         duration: 5000,
-        position: 'top-right',
+        position: 'top-center',
         style: {
-          marginTop: '65px',
-          marginRight: '20px',
-          marginLeft: '0px',
-          maxWidth: 'calc(100vw - 40px)',
-          borderRadius: '12px',
-          background: '#4f46e5',
+          marginTop: '14px',
+          maxWidth: 'calc(100vw - 32px)',
+          borderRadius: '14px',
+          background: '#0f172a',
           color: '#fff',
-          fontSize: '14px',
+          fontSize: '13px',
           direction: language === "ar" ? "rtl" : "ltr",
+          boxShadow: '0 10px 30px rgba(0,0,0,0.2)',
         },
       });
       
@@ -223,13 +325,8 @@ export default function Dashboard({ onLogout, onDeleteAccount }) {
     };
   }, [language]);
 
-  useEffect(() => {
-    const url = new URL(window.location);
-    if (url.searchParams.get("tab") !== activeTab) {
-      url.searchParams.set("tab", activeTab);
-      window.history.replaceState({}, "", url);
-    }
 
+  useEffect(() => {
     if (activeTab === "support") {
       setSupportUnreadEventCount(0);
       setSupportNotifications(prev => {
@@ -278,7 +375,7 @@ export default function Dashboard({ onLogout, onDeleteAccount }) {
     {
       id: "custom-card",
       label: language === "ar" ? "صمّم كارتك" : "Custom Card",
-      icon: Sparkles,
+      icon: CardWithPenIcon,
       feature: "products",
     },
     {
@@ -288,6 +385,11 @@ export default function Dashboard({ onLogout, onDeleteAccount }) {
       feature: "subscriptions",
     },
     { id: "profile", label: t("profile"), icon: User, feature: "profile" },
+    {
+      id: "referrals",
+      label: language === "ar" ? "دعوة الأصدقاء والمكافآت" : "Referrals & Rewards",
+      icon: Gift,
+    },
     { id: "link-card", label: language === "ar" ? "اربط كرتك" : "Link Card", icon: Wifi },
     { id: "support", label: t("support"), icon: Headset, badge: supportUnread > 0 ? supportUnread : undefined },
     ...(cart.length > 0
@@ -308,18 +410,19 @@ export default function Dashboard({ onLogout, onDeleteAccount }) {
       ? `${t("editCard")} - ${dashboard.activeCard.name}`
       : activeTab === "messages" && dashboard?.selectedMessageCard
         ? dashboard.selectedMessageCard.name
+        : activeTab === "policies"
+        ? (language === "ar" ? "سياسة الاستخدام والشروط" : "Terms & Policies")
         : navItems.find((item) => item.id === activeTab)?.label || t("appName");
 
   useEffect(() => {
-    const titleBase = `Thenith | ${screenTitle}`;
+    const isAr = language === "ar";
+    const customSiteName = typeof window !== "undefined" && window.__SITE_NAME__;
+    const brand = customSiteName || "Thenith";
+    const titleBase = isAr ? `${screenTitle} | ${brand}` : `${brand} | ${screenTitle}`;
     document.title = supportUnread > 0 ? `(${supportUnread}) ${titleBase}` : titleBase;
-  }, [screenTitle, supportUnread]);
+  }, [screenTitle, supportUnread, language]);
 
-  if (dashboard.status === "loading") {
-    return <LoadingScreen label={t("loading")} />;
-  }
-
-  if (dashboard.status === "error" || !dashboard.hasRemoteData) {
+  if (dashboard.status === "error" || (!dashboard.hasRemoteData && dashboard.status !== "loading")) {
     return (
       <LoadingScreen
         label={t("dashboardLoadError")}
@@ -332,21 +435,33 @@ export default function Dashboard({ onLogout, onDeleteAccount }) {
   const openCardEditor = (cardId, section = "personal") => {
     dashboard.setActiveCardId(cardId);
     setEditSection(section);
-    setActiveTab("cardEdit");
+    setLocalTab("cardEdit");
   };
 
   const addCard = async () => {
     const card = await dashboard.addCard();
     if (card) {
       setEditSection("personal");
-      setActiveTab("cardEdit");
+      setLocalTab("cardEdit");
     }
     return card;
   };
 
-  const changeMainTab = (tabId) => {
+  const switchTab = (tabId) => {
     if (tabId === "messages") dashboard.setSelectedMessageCardId(null);
-    setActiveTab(tabId);
+    if (tabId === "cardEdit") {
+      setLocalTab("cardEdit");
+      return;
+    }
+    setLocalTab(null);
+    const targetPath = tabId === "home" ? "/u" : `/u/${tabId}`;
+    if (location.pathname !== targetPath || location.search) {
+      navigate(targetPath);
+    }
+  };
+
+  const changeMainTab = (tabId) => {
+    switchTab(tabId);
   };
 
   return (
@@ -375,13 +490,28 @@ export default function Dashboard({ onLogout, onDeleteAccount }) {
           if (item.type === "support_message") {
             changeMainTab("support");
             setShowNotifications(false);
-          } else if (item.type === "subscription_created" || item.type === "subscription_cancelled") {
+          } else if (
+            item.type === "subscription_created" ||
+            item.type === "subscription_cancelled" ||
+            item.type === "subscription_expiring" ||
+            item.category === "subscription"
+          ) {
             changeMainTab("subscriptions");
             setShowNotifications(false);
-          } else if (item.type === "order_created" || item.type === "order_cancelled") {
+          } else if (item.type === "order_created" || item.type === "order_cancelled" || item.category === "order") {
             changeMainTab("orders");
             setShowNotifications(false);
+          } else if (item.link) {
+            if (item.link.includes("subscription")) changeMainTab("subscriptions");
+            else if (item.link.includes("order") || item.link.includes("product")) changeMainTab("orders");
+            else if (item.link.includes("card")) changeMainTab("cards");
+            else if (item.link.startsWith("http")) window.open(item.link, "_blank");
+            setShowNotifications(false);
           }
+        }}
+        onClearAllNotifications={() => {
+          api.notifications.clearAll().catch(() => {});
+          setSupportNotifications([]);
         }}
         onLogout={onLogout}
       />
@@ -397,10 +527,29 @@ export default function Dashboard({ onLogout, onDeleteAccount }) {
           activeTab={activeTab}
           onChangeTab={changeMainTab}
           onLogout={onLogout}
+          policies={policies}
+          selectedPolicySlug={selectedPolicySlug}
+          onSelectPolicy={setSelectedPolicySlug}
+
         />
 
         <main className="relative min-w-0 bg-transparent px-0 py-0 shadow-none sm:rounded-[28px] sm:bg-slate-50 sm:px-1 sm:py-2 sm:shadow-[0_18px_45px_rgba(15,23,42,0.08)] dark:sm:bg-slate-950/20 md:rounded-none md:bg-transparent md:p-0 md:shadow-none lg:col-span-9">
-          <AnimatePresence mode="wait">
+          {dashboard.status === "loading" ? (
+            activeTab === "subscriptions" ? (
+              <SubscriptionsSkeleton isArabic={language === "ar"} />
+            ) : activeTab === "products" ? (
+              <ProductsSkeleton isArabic={language === "ar"} />
+            ) : activeTab === "cards" ? (
+              <CardsSkeleton isArabic={language === "ar"} />
+            ) : activeTab === "policies" ? (
+              <PoliciesSkeleton isArabic={language === "ar"} />
+            ) : activeTab === "support" ? (
+              <SupportSkeleton isArabic={language === "ar"} />
+            ) : (
+              <DashboardHomeSkeleton isArabic={language === "ar"} />
+            )
+          ) : (
+            <AnimatePresence mode="wait">
             {activeTab === "home" && isFeatureEnabled("analytics") && (
               <motion.div
                 key="home"
@@ -419,6 +568,7 @@ export default function Dashboard({ onLogout, onDeleteAccount }) {
                   cards={dashboard.cards}
                   activeCardLink={dashboard.activeCardLink}
                   activeCardId={dashboard.activeCardId}
+                  onUpgrade={() => changeMainTab("subscriptions")}
                 />
               </motion.div>
             )}
@@ -444,6 +594,9 @@ export default function Dashboard({ onLogout, onDeleteAccount }) {
                   onDeleteCard={dashboard.deleteCard}
                   isSwitchingCard={dashboard.isSwitchingCard}
                   onUpgrade={() => changeMainTab("subscriptions")}
+                  ownerPaymentMethods={dashboard.owner?.paymentMethods}
+                  ownerActivePaymentMethodId={dashboard.owner?.activePaymentMethodId}
+                  ownerPublicId={dashboard.owner?.publicId || ""}
                 />
               </motion.div>
             )}
@@ -468,7 +621,7 @@ export default function Dashboard({ onLogout, onDeleteAccount }) {
                   permissions={dashboard.permissions}
                   entitlements={dashboard.entitlements}
                   onUpgrade={() => changeMainTab("subscriptions")}
-                  onBack={() => setActiveTab("cards")}
+                  onBack={() => switchTab("cards")}
                   onChangeSection={setEditSection}
                   onSetDragItem={setDragItem}
                   onToggleContactMenu={setShowContactMenu}
@@ -526,10 +679,10 @@ export default function Dashboard({ onLogout, onDeleteAccount }) {
                 <ProductsPage
                   t={t}
                   personal={dashboard.dashboardData?.owner || {}}
-                  onOpenCart={() => setActiveTab("cart")}
+                  onOpenCart={() => switchTab("cart")}
                   onOpenCustomCard={(prod) => {
                     setSelectedCustomProduct(prod);
-                    setActiveTab("custom-card");
+                    switchTab("custom-card");
                   }}
                   onOrder={(order) =>
                     dashboard.updateDashboard((current) => ({
@@ -553,15 +706,9 @@ export default function Dashboard({ onLogout, onDeleteAccount }) {
                 <CustomCardPage
                   isPanel={true}
                   preselectedProduct={selectedCustomProduct}
-                  onBack={() => setActiveTab("products")}
+                  onBack={() => switchTab("products")}
                   onNavigateTab={(tab) => {
-                    if (tab === "cart") {
-                      setActiveTab("cart");
-                    } else if (tab === "products") {
-                      setActiveTab("products");
-                    } else {
-                      setActiveTab(tab);
-                    }
+                    switchTab(tab);
                   }}
                 />
               </div>
@@ -578,8 +725,9 @@ export default function Dashboard({ onLogout, onDeleteAccount }) {
                   <SubscriptionsPage
                     t={t}
                     subscription={dashboard.dashboardData?.subscription}
-                    user={dashboard.dashboardData?.user}
-                    onNavigateToProfile={() => setActiveTab("profile")}
+                    user={dashboard.dashboardData?.owner || dashboard.owner}
+                    owner={dashboard.dashboardData?.owner || dashboard.owner}
+                    onNavigateToProfile={() => switchTab("profile")}
                   />
                 </motion.div>
               )}
@@ -634,9 +782,43 @@ export default function Dashboard({ onLogout, onDeleteAccount }) {
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -12 }}
               >
-                <PanelCart t={t} onCheckout={() => setActiveTab("checkout")} />
+                <PanelCart t={t} onCheckout={() => switchTab("checkout")} />
               </motion.div>
             )}
+
+            {activeTab === "referrals" && (
+              <motion.div
+                key="referrals"
+                initial={{ opacity: 0, y: 12 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -12 }}
+              >
+                <ReferralsPage
+                  language={language}
+                  user={dashboard?.user || {}}
+                  subscription={dashboard?.dashboardData?.subscription}
+                />
+              </motion.div>
+            )}
+
+            {activeTab === "policies" && (
+              <motion.div
+                key="policies"
+                initial={{ opacity: 0, y: 12 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -12 }}
+              >
+                <PanelPoliciesPage
+                  t={t}
+                  language={language}
+                  policies={policies}
+                  selectedSlug={selectedPolicySlug}
+                  onSelectPolicy={setSelectedPolicySlug}
+                />
+              </motion.div>
+            )}
+
+            
 
             {activeTab === "checkout" && (
               <motion.div
@@ -645,12 +827,23 @@ export default function Dashboard({ onLogout, onDeleteAccount }) {
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -12 }}
               >
-                <PanelCheckout t={t} onBack={() => setActiveTab("cart")} />
+                <PanelCheckout
+                  t={t}
+                  onBack={() => switchTab("cart")}
+                  onGoToStore={() => switchTab("products")}
+                />
               </motion.div>
             )}
           </AnimatePresence>
+          )}
 
-          <SupportPage t={t} language={language} isVisible={activeTab === "support"} />
+          <SupportPage
+            t={t}
+            language={language}
+            isVisible={dashboard.status !== "loading" && activeTab === "support"}
+          />
+
+          
         </main>
       </div>
     </div>

@@ -4,30 +4,21 @@ import Plan from "../models/Plan.js";
 
 import Coupon from "../models/Coupon.js";
 
-// In-memory cache for public plans & active coupons
-let cachedPlansData = null;
-let cachedPlansTime = 0;
-const PLANS_CACHE_TTL_MS = 60 * 1000;
-
+// Invalidate cache helper
 export function invalidatePlansCache() {
-  cachedPlansData = null;
-  cachedPlansTime = 0;
+  // Realtime queries directly to DB
 }
 
 // ── GET /api/plans ────────────────────────────────────────────────────────────
 const getPlans = asyncHandler(async (_request, response) => {
-  response.setHeader("Cache-Control", "public, max-age=60, stale-while-revalidate=120");
-
-  const now = Date.now();
-  if (cachedPlansData && now - cachedPlansTime < PLANS_CACHE_TTL_MS) {
-    return response.json(cachedPlansData);
-  }
+  response.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
 
   const nowDate = new Date();
   const [plans, activeCoupon] = await Promise.all([
     Plan.find({ isActive: true }).sort({ key: 1 }).lean(),
     Coupon.findOne({
       isActive: true,
+      applyMode: "auto", // only coupons designated for automatic direct application on plans
       appliesTo: { $in: ["subscriptions", "all"] },
       $or: [{ expiresAt: null }, { expiresAt: { $gt: nowDate } }],
       $expr: {
@@ -41,6 +32,14 @@ const getPlans = asyncHandler(async (_request, response) => {
       .lean(),
   ]);
 
+  let effectiveCoupon = activeCoupon;
+  if (_request.user && effectiveCoupon?.usedBy) {
+    const hasUsed = effectiveCoupon.usedBy.some(
+      (id) => id.toString() === _request.user._id.toString()
+    );
+    if (hasUsed) effectiveCoupon = null;
+  }
+
   // Apply active coupon logic to calculate final prices for each plan
   const plansWithCalculatedPrices = plans.map(plan => {
     let monthlyDiscountVal = 0;
@@ -48,21 +47,21 @@ const getPlans = asyncHandler(async (_request, response) => {
     let canApplyMonthly = false;
     let canApplyYearly = false;
 
-    if (activeCoupon) {
-      if (activeCoupon.appliesTo === "subscriptions" || activeCoupon.appliesTo === "all") {
-        if (activeCoupon.monthlyDiscountValue != null) {
-          monthlyDiscountVal = activeCoupon.monthlyDiscountValue;
+    if (effectiveCoupon) {
+      if (effectiveCoupon.appliesTo === "subscriptions" || effectiveCoupon.appliesTo === "all") {
+        if (effectiveCoupon.monthlyDiscountValue != null) {
+          monthlyDiscountVal = effectiveCoupon.monthlyDiscountValue;
           canApplyMonthly = true;
-        } else if (activeCoupon.appliesTo === "all") {
-          monthlyDiscountVal = activeCoupon.discountValue;
+        } else if (effectiveCoupon.appliesTo === "all") {
+          monthlyDiscountVal = effectiveCoupon.discountValue;
           canApplyMonthly = true;
         }
 
-        if (activeCoupon.yearlyDiscountValue != null) {
-          yearlyDiscountVal = activeCoupon.yearlyDiscountValue;
+        if (effectiveCoupon.yearlyDiscountValue != null) {
+          yearlyDiscountVal = effectiveCoupon.yearlyDiscountValue;
           canApplyYearly = true;
-        } else if (activeCoupon.appliesTo === "all") {
-          yearlyDiscountVal = activeCoupon.discountValue;
+        } else if (effectiveCoupon.appliesTo === "all") {
+          yearlyDiscountVal = effectiveCoupon.discountValue;
           canApplyYearly = true;
         }
       }
@@ -79,8 +78,8 @@ const getPlans = asyncHandler(async (_request, response) => {
     const monthlyPrice = plan.prices?.monthly || 0;
     const yearlyPrice = plan.prices?.yearly || 0;
 
-    const monthlyDiscountAmount = calcDiscount(monthlyPrice, monthlyDiscountVal, activeCoupon?.discountType, canApplyMonthly);
-    const yearlyDiscountAmount = calcDiscount(yearlyPrice, yearlyDiscountVal, activeCoupon?.discountType, canApplyYearly);
+    const monthlyDiscountAmount = calcDiscount(monthlyPrice, monthlyDiscountVal, effectiveCoupon?.discountType, canApplyMonthly);
+    const yearlyDiscountAmount = calcDiscount(yearlyPrice, yearlyDiscountVal, effectiveCoupon?.discountType, canApplyYearly);
 
     return {
       ...plan,
@@ -90,23 +89,20 @@ const getPlans = asyncHandler(async (_request, response) => {
           finalPrice: Math.max(0, monthlyPrice - monthlyDiscountAmount),
           discountAmount: monthlyDiscountAmount,
           appliedDiscountVal: monthlyDiscountVal,
-          discountType: activeCoupon?.discountType || "percentage"
+          discountType: effectiveCoupon?.discountType || "percentage"
         },
         yearly: {
           originalPrice: yearlyPrice,
           finalPrice: Math.max(0, yearlyPrice - yearlyDiscountAmount),
           discountAmount: yearlyDiscountAmount,
           appliedDiscountVal: yearlyDiscountVal,
-          discountType: activeCoupon?.discountType || "percentage"
+          discountType: effectiveCoupon?.discountType || "percentage"
         }
       }
     };
   });
 
-  const result = { plans: plansWithCalculatedPrices, activeCoupon };
-  cachedPlansData = result;
-  cachedPlansTime = Date.now();
-
+  const result = { plans: plansWithCalculatedPrices, activeCoupon: effectiveCoupon };
   response.json(result);
 });
 

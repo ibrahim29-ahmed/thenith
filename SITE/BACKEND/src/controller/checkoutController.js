@@ -11,6 +11,8 @@ const { sendOrderEmail } = mailService;
 import Coupon from "../models/Coupon.js";
 import PaymentTransaction from "../models/PaymentTransaction.js";
 import { processCustomCardsForOrder } from "../services/customCardOrderService.js";
+import { getPaymentConfig } from "../util/paymentConfig.js";
+import { ensureUserPhone } from "./paymentController.js";
 
 // POST /api/checkout/validate-coupon
 export const validateCoupon = async (req, res) => {
@@ -41,6 +43,30 @@ export const validateCoupon = async (req, res) => {
       return res
         .status(400)
         .json({ error: "تم استنفاد الحد الأقصى لاستخدام هذا الكوبون." });
+    }
+
+    // Strictly enforce one use per user
+    if (req.user) {
+      const inUsedBy =
+        coupon.usedBy &&
+        coupon.usedBy.some(
+          (id) => id.toString() === req.user._id.toString()
+        );
+      const hasUsedInOrder = await Order.exists({
+        userId: req.user._id,
+        paymentStatus: "paid",
+        couponId: coupon._id,
+      });
+      const hasUsedInTx = await PaymentTransaction.exists({
+        userId: req.user._id,
+        status: "paid",
+        "paymentData.couponCode": coupon.code,
+      });
+      if (inUsedBy || hasUsedInOrder || hasUsedInTx) {
+        return res
+          .status(400)
+          .json({ error: "لقد قمت باستخدام هذا الكوبون من قبل. يُسمح باستخدام الكوبون مرة واحدة فقط لكل مستخدم." });
+      }
     }
 
     // Validate target: coupon must apply to "all" or "store"
@@ -100,11 +126,22 @@ export const createOrder = async (req, res) => {
       return res.status(400).json({ error: "Incomplete customer details." });
     }
 
-    if (!["online", "cash_on_delivery"].includes(paymentMethod)) {
+    if (!["online", "cash_on_delivery", "free"].includes(paymentMethod)) {
       return res.status(400).json({
         error: "A supported payment method is required.",
         code: "INVALID_PAYMENT_METHOD",
       });
+    }
+
+    if (paymentMethod === "cash_on_delivery") {
+      const pConfig = await getPaymentConfig();
+      const codMethod = pConfig.methods.find((m) => m.id === "cash_on_delivery");
+      if (pConfig.globalSettings?.cod_enabled === false || (codMethod && !codMethod.enabled)) {
+        return res.status(400).json({
+          error: "خيار الدفع عند الاستلام معطل حالياً من قبل الإدارة.",
+          code: "COD_DISABLED",
+        });
+      }
     }
     if (!req.user?._id) {
       return res
@@ -112,7 +149,8 @@ export const createOrder = async (req, res) => {
         .json({ error: "Sign in before placing an order." });
     }
 
-    if (!req.user.phone) {
+    const userPhone = await ensureUserPhone(req.user, req);
+    if (!userPhone) {
       return res.status(400).json({ error: "يجب إضافة رقم هاتف لحسابك قبل إتمام الطلب." });
     }
 
@@ -129,28 +167,7 @@ export const createOrder = async (req, res) => {
       { $set: { status: "cancelled" } }
     );
 
-    // Check if user has an active pending Fawry or Mobile Wallet payment
-    const activePendingPayment = await PaymentTransaction.findOne({
-      userId: req.user._id,
-      status: "pending",
-      $or: [
-        { paymentMethodId: { $in: [3, 4] } },
-        { paymentMethodName: { $regex: /fawry|فوري|wallet|meeza|محفظ|كاش/i } },
-        { "paymentData.fawryCode": { $exists: true, $ne: null } },
-        { "paymentData.mobileWalletNumber": { $exists: true, $ne: null } },
-        { "paymentData.customerMobile": { $exists: true, $ne: null } },
-      ],
-    }).sort({ createdAt: -1 });
 
-    if (activePendingPayment) {
-      return res.status(400).json({
-        error: "لديك عملية دفع قيد الانتظار (فوري / محفظة إلكترونية). يجب إكمال الدفع أو إلغاء العملية السابقة أولاً قبل إجراء أي عملية شراء جديدة.",
-        code: "PENDING_PAYMENT_EXISTS",
-        pendingIntentKey: activePendingPayment.intentKey,
-        pendingOrderType: activePendingPayment.orderType,
-        pendingTx: activePendingPayment,
-      });
-    }
 
     const itemFingerprint = items.map((i) => `${i.productId || i.id}:${i.quantity}`).join(",");
     const lockKey = `order_create_${req.user._id}_${paymentMethod}_${itemFingerprint}`;
@@ -187,11 +204,19 @@ export const createOrder = async (req, res) => {
         const itemTotal = dbProduct.price * qty;
         subTotal += itemTotal;
 
+        const defaultProductImg = Array.isArray(dbProduct.images)
+          ? (typeof dbProduct.images[0] === "object" ? dbProduct.images[0]?.url : dbProduct.images[0])
+          : (dbProduct.image || "");
+
         finalItems.push({
           productId: dbProduct._id,
           name: dbProduct.name,
           price: dbProduct.price,
           quantity: qty,
+          selectedImage: item.selectedImage || item.image || defaultProductImg || "",
+          selectedImageId: item.selectedImageId || "",
+          image: item.selectedImage || item.image || defaultProductImg || "",
+          color: item.color || null,
           customDesign: item.customDesign || null,
         });
       }
@@ -213,12 +238,93 @@ export const createOrder = async (req, res) => {
           code: couponCode.toUpperCase().trim(),
         });
         if (appliedCoupon) {
-          discount = appliedCoupon.calculateDiscount(subTotal, "store");
+          // Strictly enforce one use per user account
+          if (req.user) {
+            const inUsedBy =
+              appliedCoupon.usedBy &&
+              appliedCoupon.usedBy.some(
+                (id) => id.toString() === req.user._id.toString()
+              );
+            const hasUsedInOrder = await Order.exists({
+              userId: req.user._id,
+              paymentStatus: "paid",
+              couponId: appliedCoupon._id,
+            });
+            const hasUsedInTx = await PaymentTransaction.exists({
+              userId: req.user._id,
+              status: "paid",
+              "paymentData.couponCode": appliedCoupon.code,
+            });
+            if (inUsedBy || hasUsedInOrder || hasUsedInTx) {
+              return res.status(400).json({
+                error:
+                  "لقد قمت باستخدام هذا الكوبون من قبل. يُسمح باستخدام الكوبون مرة واحدة فقط لكل حساب.",
+              });
+            }
+          }
+          discount = appliedCoupon.calculateDiscount(subTotal, "store", null, req.user?._id);
         }
       }
 
       // 4. Calculate Final Total
       const finalTotal = Math.max(0, subTotal + shippingCost - discount);
+
+      // 100% Free Order: Complete immediately without payment gateway
+      if (finalTotal === 0) {
+        const order = await Order.create({
+          userId: req.user._id,
+          customer,
+          items: finalItems,
+          totalAmount: 0,
+          shippingCost,
+          discount,
+          status: "received",
+          paymentMethod: "free",
+          paymentMethodName: "مجاني / Free",
+          paymentStatus: "paid",
+        });
+        await processCustomCardsForOrder(order);
+
+        if (appliedCoupon && discount > 0) {
+          appliedCoupon.usedCount = (appliedCoupon.usedCount || 0) + 1;
+          if (!appliedCoupon.usedBy) appliedCoupon.usedBy = [];
+          if (!appliedCoupon.usedBy.some((id) => id.toString() === req.user._id.toString())) {
+            appliedCoupon.usedBy.push(req.user._id);
+          }
+          await appliedCoupon.save();
+        }
+
+        notifyUser(req.user._id.toString(), {
+          type: "order_created",
+          payload: { id: order._id, name: customer.name },
+        });
+        sendOrderEmail({
+          email: customer.email || req.user.email,
+          name: customer.name,
+          orderNumber: order.orderNumber,
+          items: finalItems,
+          totalAmount: 0,
+          shippingCost,
+          discount,
+          paymentMethod: "مجاني / Free",
+          customerAddress: `${customer.address}, ${customer.city}`,
+          status: "paid",
+        }).catch((err) => {
+          console.warn("[mail] Error sending order email:", err?.message || err);
+        });
+
+        return {
+          status: 201,
+          data: {
+            success: true,
+            isFree: true,
+            message: "تم تأكيد طلبك المجاني بنجاح.",
+            orderId: order._id,
+            orderNumber: order.orderNumber,
+            paymentMethod: "free",
+          },
+        };
+      }
 
       if (paymentMethod === "cash_on_delivery") {
         // Prevent duplicate COD orders if user double clicks or server is slow
@@ -257,6 +363,10 @@ export const createOrder = async (req, res) => {
 
         if (appliedCoupon && discount > 0) {
           appliedCoupon.usedCount += 1;
+          if (!appliedCoupon.usedBy) appliedCoupon.usedBy = [];
+          if (!appliedCoupon.usedBy.some((id) => id.toString() === req.user._id.toString())) {
+            appliedCoupon.usedBy.push(req.user._id);
+          }
           await appliedCoupon.save();
         }
 

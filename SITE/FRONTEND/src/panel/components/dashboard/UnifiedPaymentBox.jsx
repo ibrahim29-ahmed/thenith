@@ -17,9 +17,10 @@ import {
 import { QRCodeSVG } from "qrcode.react";
 import { useNavigate } from "react-router-dom";
 import api from "../../../api/index.js";
+import { useCart } from "../../../context/CartContext.jsx";
 
 function formatMoney(amount) {
-  return `${Number(amount || 0).toLocaleString("ar-EG")} ج.م`;
+  return `${Number(amount || 0).toLocaleString("en-US")} ج.م`;
 }
 
 function isWalletMethod(method) {
@@ -54,11 +55,14 @@ export default function UnifiedPaymentBox({
   isCancelling = false,
 }) {
   const navigate = useNavigate();
+  const { clearCart } = useCart();
   const [copiedCode, setCopiedCode] = useState(false);
+  const [copiedWalletRef, setCopiedWalletRef] = useState(false);
   const [verifying, setVerifying] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
   const [countdown, setCountdown] = useState(5);
   const [checkMessage, setCheckMessage] = useState("");
+  const [isSessionExpired, setIsSessionExpired] = useState(false);
   const pollTimerRef = useRef(null);
 
   const isWallet =
@@ -88,13 +92,51 @@ export default function UnifiedPaymentBox({
     intentKey ||
     invoiceInfo?.intent_key;
 
-  const expiry =
+  const walletRef =
+    paymentData?.walletReference ||
+    paymentData?.meezaReference ||
+    paymentData?.systemReference ||
+    paymentData?.payment_data?.walletReference ||
+    paymentData?.payment_data?.meezaReference ||
+    paymentData?.payment_data?.systemReference ||
+    invoiceInfo?.payment_data?.walletReference ||
+    invoiceInfo?.payment_data?.meezaReference ||
+    invoiceInfo?.payment_data?.systemReference ||
+    invoiceInfo?.transaction_history?.[0]?.reference;
+
+  const fawaterakCreatedAt =
+    paymentData?.fawaterakCreatedAt ||
+    invoiceInfo?.invoice_date ||
+    invoiceInfo?.created_at ||
+    invoiceInfo?.date ||
+    paymentData?.created_at;
+
+  const rawExpiry =
+    paymentData?.fawaterakExpireDate ||
+    invoiceInfo?.fawaterakExpireDate ||
+    paymentData?.expirationTime ||
     paymentData?.expireDate ||
-    paymentData?.expiryDate ||
+    paymentData?.payment_data?.expirationTime ||
     paymentData?.payment_data?.expireDate ||
-    paymentData?.payment_data?.expiryDate ||
+    paymentData?.expiryDate ||
+    paymentData?.expire_date ||
+    invoiceInfo?.payment_data?.expirationTime ||
     invoiceInfo?.payment_data?.expireDate ||
-    invoiceInfo?.payment_data?.expiryDate;
+    invoiceInfo?.expirationTime ||
+    invoiceInfo?.expireDate;
+
+  const expiry = (() => {
+    if (isWallet) {
+      const cTime = fawaterakCreatedAt ? new Date(fawaterakCreatedAt).getTime() : Date.now();
+      const eTime = rawExpiry ? new Date(rawExpiry).getTime() : 0;
+      if (!rawExpiry || isNaN(eTime) || (eTime - cTime > 60 * 60 * 1000)) {
+        if (!isNaN(cTime)) {
+          return new Date(cTime + 5 * 60 * 1000).toISOString();
+        }
+      }
+    }
+    return rawExpiry;
+  })();
 
   const submittedWallet =
     paymentData?.mobileWalletNumber ||
@@ -116,10 +158,30 @@ export default function UnifiedPaymentBox({
     setTimeout(() => setCopiedCode(false), 2000);
   };
 
+  const handleCopyWalletRef = () => {
+    if (!walletRef) return;
+    navigator.clipboard.writeText(String(walletRef));
+    setCopiedWalletRef(true);
+    setTimeout(() => setCopiedWalletRef(false), 2000);
+  };
+
+  useEffect(() => {
+    if (!expiry) return;
+    const checkExpiry = () => {
+      const eTime = new Date(expiry).getTime();
+      if (!isNaN(eTime) && Date.now() >= eTime) {
+        setIsSessionExpired(true);
+      }
+    };
+    checkExpiry();
+    const timer = setInterval(checkExpiry, 1000);
+    return () => clearInterval(timer);
+  }, [expiry]);
+
   const checkStatus = useCallback(
     async (isManual = false) => {
       const activeIntent = intentKey || invoiceInfo?.intent_key;
-      if (!activeIntent || isSuccess) return;
+      if (!activeIntent || isSuccess || isSessionExpired) return;
 
       if (isManual) {
         setVerifying(true);
@@ -128,8 +190,16 @@ export default function UnifiedPaymentBox({
 
       try {
         const res = await api.payment.verify(activeIntent);
+        if (res.isExpired || res.status === "expired") {
+          setIsSessionExpired(true);
+          if (pollTimerRef.current) clearInterval(pollTimerRef.current);
+          return;
+        }
         if (res.success && (res.status === "paid" || res.status === "success")) {
           setIsSuccess(true);
+          try {
+            clearCart();
+          } catch (e) {}
           setCheckMessage(
             isArabic
               ? "🎉 تم تأكيد الدفع بنجاح!"
@@ -147,6 +217,11 @@ export default function UnifiedPaymentBox({
           return;
         }
       } catch (err) {
+        if (err.response?.status === 410 || err.response?.data?.isExpired) {
+          setIsSessionExpired(true);
+          if (pollTimerRef.current) clearInterval(pollTimerRef.current);
+          return;
+        }
         if (isManual) {
           setCheckMessage(
             isArabic
@@ -158,25 +233,17 @@ export default function UnifiedPaymentBox({
         if (isManual) setVerifying(false);
       }
     },
-    [intentKey, invoiceInfo, isSuccess, isArabic]
+    [intentKey, invoiceInfo, isSuccess, isSessionExpired, isArabic, navigate, paymentData]
   );
 
-  useEffect(() => {
-    const activeIntent = intentKey || invoiceInfo?.intent_key;
-    if (!activeIntent || isSuccess) return;
-
-    pollTimerRef.current = setInterval(() => {
-      checkStatus(false);
-    }, 4500);
-
-    return () => {
-      if (pollTimerRef.current) clearInterval(pollTimerRef.current);
-    };
-  }, [checkStatus, intentKey, invoiceInfo, isSuccess]);
+  // Polling removed: Frontend does not poll. It relies entirely on Fawaterak's redirect/webhook flow.
 
   // Handle countdown and success callback
   useEffect(() => {
     if (isSuccess) {
+      try {
+        clearCart();
+      } catch (e) {}
       if (onSuccess) {
         onSuccess();
       } else {
@@ -224,6 +291,46 @@ export default function UnifiedPaymentBox({
                 ? `جاري تحويلك لتفعيل حسابك خلال ${countdown} ثواني...` 
                 : `Redirecting to your account in ${countdown} seconds...`}
             </p>
+          </div>
+        </div>
+      ) : isSessionExpired ? (
+        <div className="py-4">
+          <div className="w-12 h-12 bg-rose-100 dark:bg-rose-950/60 rounded-full flex items-center justify-center mx-auto mb-3 ring-4 ring-rose-200/50 dark:ring-rose-800/40">
+            <Clock className="w-6 h-6 text-rose-600 dark:text-rose-400" />
+          </div>
+          <h2 className="text-base sm:text-lg font-black text-slate-900 dark:text-white mb-2">
+            {isArabic ? "انتهت صلاحية وسيلة الدفع" : "Payment Session Expired"}
+          </h2>
+          <p className="text-slate-500 dark:text-slate-400 text-xs mb-4 max-w-[280px] mx-auto leading-relaxed">
+            {isArabic
+              ? "انتهت مهلة السداد المحددة لعملية الدفع هذه. تم إغلاق وتأمين وسيلة الدفع تلقائياً."
+              : "This payment session has elapsed and was closed for your security."}
+          </p>
+
+          <div className="space-y-2 mt-4">
+            {onCancel && (
+              <button
+                type="button"
+                onClick={onCancel}
+                disabled={isCancelling}
+                className="w-full py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs transition-colors shadow-sm disabled:opacity-50"
+              >
+                {isCancelling ? (
+                  isArabic ? "جاري الإلغاء..." : "Cancelling..."
+                ) : (
+                  isArabic ? "طلب وسيلة دفع جديدة" : "Request New Payment"
+                )}
+              </button>
+            )}
+            {onBack && (
+              <button
+                type="button"
+                onClick={onBack}
+                className="w-full py-2 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 font-bold text-xs transition-colors"
+              >
+                {backLabel || (isArabic ? "إغلاق" : "Close")}
+              </button>
+            )}
           </div>
         </div>
       ) : (
@@ -332,12 +439,12 @@ export default function UnifiedPaymentBox({
                   </span>
                   <div>
                     <p className="font-bold text-slate-900 dark:text-white">
-                      {isArabic ? "راجع إشعار طلب الدفع" : "Review Request"}
+                      {isArabic ? "راجع إشعار طلب الدفع أو اطلب كود التأكيد" : "Review Request or Dial USSD"}
                     </p>
                     <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
                       {isArabic
-                        ? `ستظهر لك مطالبة بدفع ${formatMoney(amount)}.`
-                        : `A prompt of ${formatMoney(amount)} will appear.`}
+                        ? `وافق على دفع ${formatMoney(amount)} أو اطلب كود التأكيد (فودافون: *9#، اتصالات: *777#، أورنج: #115#).`
+                        : `Confirm payment of ${formatMoney(amount)} or dial USSD (Vodafone: *9#, Etisalat: *777#, Orange: #115#).`}
                     </p>
                   </div>
                 </div>
@@ -401,17 +508,35 @@ export default function UnifiedPaymentBox({
                 <div className="mt-2 bg-white/70 dark:bg-slate-900/60 rounded px-2.5 py-1.5 inline-flex items-center gap-1.5 border border-indigo-100 dark:border-indigo-900/50">
                   <Clock className="w-3 h-3 text-rose-500" />
                   <p className="text-[10px] font-bold text-rose-600 dark:text-rose-400">
-                    {isArabic ? "صالح حتى:" : "Expires at:"}{" "}
-                    {new Date(expiry).toLocaleString(
-                      isArabic ? "ar-EG" : "en-US",
-                      {
-                        dateStyle: "medium",
-                        timeStyle: "short",
-                      }
-                    )}
+                    {isArabic ? "وقت انتهاء الفاتورة:" : "Invoice Expiry:"}{" "}
+                    {(() => {
+                      const d = new Date(expiry);
+                      return isNaN(d.getTime())
+                        ? String(expiry)
+                        : d.toLocaleString(isArabic ? "ar-EG-u-nu-latn" : "en-US", {
+                            day: "2-digit",
+                            month: "short",
+                            year: "numeric",
+                            hour: "2-digit",
+                            minute: "2-digit",
+                            hour12: true,
+                          });
+                    })()}
                   </p>
                 </div>
               )}
+
+              <div className="mt-2.5 pt-2 border-t border-indigo-200/60 dark:border-indigo-800/60 text-[10px] text-indigo-900/80 dark:text-indigo-200/80 space-y-1 text-start">
+                <p className="font-bold flex items-center gap-1 text-indigo-950 dark:text-indigo-100">
+                  <Receipt className="w-3 h-3 text-indigo-600 dark:text-indigo-400" />
+                  <span>{isArabic ? "تعليمات سداد فوري:" : "Fawry Instructions:"}</span>
+                </p>
+                <p className="leading-relaxed">
+                  {isArabic
+                    ? "ادفع عبر أي ماكينة فوري أو تطبيق MyFawry بكود الخدمة 788 (فوري باي) باستخدام الكود الموضح أعلاه قبل انتهاء الصلاحية."
+                    : "Pay at any Fawry machine or MyFawry app via service code 788 (FawryPay) using the code above before expiration."}
+                </p>
+              </div>
             </div>
           )}
 
@@ -423,6 +548,28 @@ export default function UnifiedPaymentBox({
             </h4>
 
             <div className="space-y-1.5 text-[11px]">
+              {fawaterakCreatedAt && (
+                <div className="flex justify-between items-center py-0.5 border-b border-slate-200/60 dark:border-slate-800/60">
+                  <span className="text-slate-500 dark:text-slate-400 font-medium">
+                    {isArabic ? "تاريخ ووقت الإنشاء:" : "Created:"}
+                  </span>
+                  <span className="font-bold text-slate-800 dark:text-slate-100 text-[10px]">
+                    {(() => {
+                      const d = new Date(fawaterakCreatedAt);
+                      return isNaN(d.getTime())
+                        ? String(fawaterakCreatedAt)
+                        : d.toLocaleString(isArabic ? "ar-EG-u-nu-latn" : "en-US", {
+                            day: "2-digit",
+                            month: "short",
+                            year: "numeric",
+                            hour: "2-digit",
+                            minute: "2-digit",
+                            hour12: true,
+                          });
+                    })()}
+                  </span>
+                </div>
+              )}
               {intentKey && (
                 <div className="flex justify-between items-center py-0.5 border-b border-slate-200/60 dark:border-slate-800/60">
                   <span className="text-slate-500 dark:text-slate-400 font-medium">
@@ -447,6 +594,28 @@ export default function UnifiedPaymentBox({
                   {methodName}
                 </span>
               </div>
+
+              {walletRef && (
+                <div className="flex justify-between items-center py-0.5 border-b border-slate-200/60 dark:border-slate-800/60">
+                  <span className="text-indigo-600 dark:text-indigo-400 font-bold flex items-center gap-1">
+                    <Smartphone className="w-3 h-3" />
+                    {isArabic ? "الرقم المرجعي للمحفظة:" : "Wallet Ref:"}
+                  </span>
+                  <div className="flex items-center gap-1.5">
+                    <span className="font-mono font-bold text-indigo-700 dark:text-indigo-300 select-all" dir="ltr">
+                      {walletRef}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={handleCopyWalletRef}
+                      className="p-0.5 rounded text-slate-400 hover:text-indigo-600"
+                      title={isArabic ? "نسخ" : "Copy"}
+                    >
+                      {copiedWalletRef ? <Check className="w-3 h-3 text-emerald-500" /> : <Copy className="w-3 h-3" />}
+                    </button>
+                  </div>
+                </div>
+              )}
 
               <div className="flex justify-between items-center py-0.5 border-b border-slate-200/60 dark:border-slate-800/60">
                 <span className="text-slate-500 dark:text-slate-400 font-medium">

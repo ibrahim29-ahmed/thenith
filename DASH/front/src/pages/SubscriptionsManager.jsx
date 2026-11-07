@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
+import { Link } from "react-router-dom";
 import {
   Plus,
   Edit2,
@@ -7,6 +8,14 @@ import {
   Save,
   Loader2,
   GripVertical,
+  Activity,
+  Layers,
+  Sparkles,
+  ShieldCheck,
+  Check,
+  X,
+  CreditCard,
+  Power,
 } from "lucide-react";
 import {
   fetchPlans,
@@ -151,19 +160,21 @@ function MarketingFeaturesBuilder({ items = [], onChange }) {
 }
 
 const FEATURE_LABELS = {
-  socialMediaLinks: "روابط السوشيال ميديا",
+  calendarBooking: "كالندر",
+  verifiedBadge: "شارة Thenith الموثقة",
+  contactMethods: "إضافة وسائل الاتصال",
+  socialMediaLinks: "إضافة وسائل الاتصال",
+  coverImage: "تغيير صورة الغلاف",
+  customLink: "رابط مخصص احترافي",
+  reorderLinks: "ترتيب صفحة الروابط",
+  themeSelection: "اختيار مظهر",
   saveContact: "حفظ جهة الاتصال",
   qrCode: "QR Code",
-  basicAnalytics: "إحصائيات أساسية",
+  removeBranding: "إزالة شعار Thenith",
   advancedAnalytics: "إحصائيات متقدمة",
-  verifiedBadge: "شارة التحقق",
-  coverImage: "صورة الغلاف",
-  customLink: "رابط مخصص",
-  reorderLinks: "إعادة ترتيب الروابط",
-  calendarBooking: "تغيير طريقة التواصل (فورم - حجز)",
-  removeBranding: "إزالة العلامة التجارية",
-  prioritySupport: "دعم أولوية",
-  futureFeatures: "مميزات مستقبلية",
+  basicAnalytics: "إحصائيات أساسية",
+  prioritySupport: "الأولوية في الدعم الفني",
+  futureFeatures: "جميع المميزات الجديدة مستقبلًا",
 };
 
 function PlanForm({ initial, plans, onSave, onCancel, saving, error }) {
@@ -171,7 +182,7 @@ function PlanForm({ initial, plans, onSave, onCancel, saving, error }) {
     let initialFeatures = {};
     if (initial) {
       if (Array.isArray(initial.features)) {
-        initial.features.forEach((f) => (initialFeatures[f] = true));
+        initialFeatures.forEach((f) => (initialFeatures[f] = true));
       } else if (typeof initial.features === "object") {
         initialFeatures = { ...initial.features };
       }
@@ -194,25 +205,32 @@ function PlanForm({ initial, plans, onSave, onCancel, saving, error }) {
   const isPro = form.key === "pro";
 
   const NAME_TO_KEY = {
-    "وسائل التواصل": "socialMediaLinks",
+    "كالندر": "calendarBooking",
+    "شارة thenith الموثقة": "verifiedBadge",
+    "شارة thenith": "verifiedBadge",
+    "شارة التحقق": "verifiedBadge",
+    "إضافة وسائل الاتصال": "contactMethods",
+    "وسائل التواصل": "contactMethods",
+    "روابط السوشيال ميديا": "contactMethods",
+    "تغيير صورة الغلاف": "coverImage",
+    "صورة الغلاف": "coverImage",
+    "رابط مخصص احترافي": "customLink",
+    "رابط مخصص": "customLink",
+    "ترتيب صفحة الروابط": "reorderLinks",
+    "إعادة ترتيب الروابط": "reorderLinks",
+    "اختيار مظهر": "themeSelection",
     "حفظ جهة الاتصال": "saveContact",
     "qr code": "qrCode",
-    "إحصائيات أساسية": "basicAnalytics",
-    "إحصائيات متقدمة": "advancedAnalytics",
-    "صورة الغلاف": "coverImage",
-    "تغيير صورة الغلاف": "coverImage",
-    "رابط مخصص": "customLink",
-    "رابط مخصص احترافي": "customLink",
-    "إعادة ترتيب الروابط": "reorderLinks",
-    "ترتيب صفحة الروابط": "reorderLinks",
-    "إزالة العلامة التجارية": "removeBranding",
     "إزالة شعار thenith": "removeBranding",
-    "شارة التحقق": "verifiedBadge",
-    "شارة thenith الموثقة": "verifiedBadge",
-    "دعم أولوية": "prioritySupport",
+    "إزالة العلامة التجارية": "removeBranding",
+    "إحصائيات متقدمة": "advancedAnalytics",
+    "إحصائيات أساسية": "basicAnalytics",
+    "إحصائيات بسيطة": "basicAnalytics",
     "الأولوية في الدعم الفني": "prioritySupport",
-    "مميزات مستقبلية": "futureFeatures",
+    "دعم أولوية": "prioritySupport",
     "جميع المميزات الجديدة مستقبلًا": "futureFeatures",
+    "جميع المميزات الجديدة مستقبلا": "futureFeatures",
+    "مميزات مستقبلية": "futureFeatures",
     "حجز المواعيد (كالندر)": "calendarBooking",
     "حجز مواعيد": "calendarBooking",
     "تقويم المواعيد": "calendarBooking",
@@ -222,7 +240,10 @@ function PlanForm({ initial, plans, onSave, onCancel, saving, error }) {
   const handleFormSave = () => {
     const newFeatures = { ...form.features };
     // reset known features
-    Object.values(NAME_TO_KEY).forEach((key) => (newFeatures[key] = false));
+    Object.values(NAME_TO_KEY).forEach((key) => {
+      newFeatures[key] = false;
+    });
+    newFeatures.socialMediaLinks = false;
 
     form.marketingFeatures.forEach((mf) => {
       const nameToCheck = String((typeof mf.name === 'object' ? (mf.name?.ar || mf.name?.en) : mf.name) || '');
@@ -230,6 +251,9 @@ function PlanForm({ initial, plans, onSave, onCancel, saving, error }) {
       const sysKey = NAME_TO_KEY[normalized];
       if (sysKey && mf.enabled) {
         newFeatures[sysKey] = true;
+        if (sysKey === "contactMethods") {
+          newFeatures.socialMediaLinks = true;
+        }
       }
     });
 
@@ -425,22 +449,57 @@ function PlanForm({ initial, plans, onSave, onCancel, saving, error }) {
             />
           </div>
 
-          <label className="flex items-center gap-3 p-4 bg-slate-50 rounded-xl border border-slate-200 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={form.isActive}
-              onChange={(e) => setForm({ ...form, isActive: e.target.checked })}
-              className="w-5 h-5 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500"
-            />
-            <div>
-              <span className="block font-bold text-slate-800">
-                تفعيل الباقة
-              </span>
-              <span className="block text-sm text-slate-500">
-                إظهار هذه الباقة في صفحة الأسعار وإتاحتها للاشتراك
-              </span>
+          <div className="space-y-2">
+            <label className="block text-sm font-bold text-slate-700">
+              حالة التفعيل (تفعيل أو تعطيل)
+            </label>
+            <div className="grid grid-cols-2 gap-3">
+              <button
+                type="button"
+                onClick={() => setForm({ ...form, isActive: true })}
+                className={`p-4 rounded-xl border-2 text-start flex items-center justify-between transition-all cursor-pointer ${
+                  form.isActive
+                    ? "border-emerald-500 bg-emerald-50/50 text-emerald-900 shadow-sm"
+                    : "border-slate-200 bg-white text-slate-600 hover:border-slate-300"
+                }`}
+              >
+                <div className="flex items-center gap-2.5">
+                  <div className={`w-3.5 h-3.5 rounded-full flex items-center justify-center ${form.isActive ? "bg-emerald-500" : "border-2 border-slate-300"}`}>
+                    {form.isActive && <div className="w-1.5 h-1.5 bg-white rounded-full" />}
+                  </div>
+                  <div>
+                    <span className="font-bold text-sm block">تفعيل الخدمة</span>
+                    <span className="text-xs text-slate-500">متاحة ونشطة</span>
+                  </div>
+                </div>
+                <Check className={`w-5 h-5 ${form.isActive ? "text-emerald-600" : "opacity-0"}`} />
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setForm({ ...form, isActive: false })}
+                className={`p-4 rounded-xl border-2 text-start flex items-center justify-between transition-all cursor-pointer ${
+                  !form.isActive
+                    ? "border-rose-500 bg-rose-50/50 text-rose-900 shadow-sm"
+                    : "border-slate-200 bg-white text-slate-600 hover:border-slate-300"
+                }`}
+              >
+                <div className="flex items-center gap-2.5">
+                  <div className={`w-3.5 h-3.5 rounded-full flex items-center justify-center ${!form.isActive ? "bg-rose-500" : "border-2 border-slate-300"}`}>
+                    {!form.isActive && <div className="w-1.5 h-1.5 bg-white rounded-full" />}
+                  </div>
+                  <div>
+                    <span className="font-bold text-sm block">تعطيل الخدمة</span>
+                    <span className="text-xs text-slate-500">معطلة ومحجوبة</span>
+                  </div>
+                </div>
+                <X className={`w-5 h-5 ${!form.isActive ? "text-rose-600" : "opacity-0"}`} />
+              </button>
             </div>
-          </label>
+            <p className="text-xs text-slate-500 mt-1">
+              عند التعطيل، لن تظهر هذه الباقة أو الخدمة في صفحة الأسعار ولن يتمكن المستخدمون الجدد من الاشتراك بها.
+            </p>
+          </div>
         </div>
       </div>
 
@@ -477,6 +536,7 @@ export default function SubscriptionsManager() {
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [formError, setFormError] = useState("");
+  const [togglingPlanId, setTogglingPlanId] = useState(null);
 
   const load = useCallback(async () => {
     try {
@@ -491,6 +551,28 @@ export default function SubscriptionsManager() {
   useEffect(() => {
     load();
   }, [load]);
+
+  const corePlans = useMemo(() => {
+    const list = plans.filter((p) => p.key === "free" || p.key === "pro");
+    // Sort so free comes before pro
+    return list.sort((a, b) => (a.key === "free" ? -1 : 1));
+  }, [plans]);
+
+  const addonPlans = useMemo(() => {
+    return plans.filter((p) => p.key !== "free" && p.key !== "pro");
+  }, [plans]);
+
+  const handleToggleActive = async (plan) => {
+    setTogglingPlanId(plan._id);
+    try {
+      await updatePlan(plan._id, { ...plan, isActive: !plan.isActive });
+      await load();
+    } catch (error) {
+      alert(error.message || "حدث خطأ أثناء تغيير حالة التفعيل");
+    } finally {
+      setTogglingPlanId(null);
+    }
+  };
 
   const handleSave = async (form) => {
     setFormError("");
@@ -537,123 +619,261 @@ export default function SubscriptionsManager() {
     );
   }
 
+  const renderPlanCard = (plan, isSide = false) => {
+    const isToggling = togglingPlanId === plan._id;
+    const planName = typeof plan.name === 'object' ? plan.name.ar : plan.name;
+    const isPaymentPlus = plan.key === "payment_plus";
+
+    return (
+      <div
+        key={plan._id}
+        className={`bg-white rounded-2xl border transition-all shadow-sm overflow-hidden flex flex-col ${
+          isSide
+            ? isPaymentPlus
+              ? "border-indigo-200 ring-1 ring-indigo-100 shadow-indigo-50/50"
+              : "border-purple-200 ring-1 ring-purple-100"
+            : "border-slate-200"
+        }`}
+      >
+        <div className={`p-6 border-b ${isSide ? "bg-gradient-to-br from-indigo-50/40 via-white to-slate-50 border-indigo-100" : "border-slate-100"}`}>
+          <div className="flex items-start justify-between gap-2 mb-3">
+            <div>
+              <div className="flex items-center gap-2">
+                <h3 className="text-lg font-black text-slate-800">
+                  {planName}
+                </h3>
+                {isSide && (
+                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-indigo-100 text-indigo-700 border border-indigo-200">
+                    <Sparkles className="w-3 h-3 text-indigo-500" />
+                    خدمة جانبية
+                  </span>
+                )}
+                {!isSide && (
+                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-slate-100 text-slate-700 border border-slate-200">
+                    <ShieldCheck className="w-3 h-3 text-slate-500" />
+                    باقة أساسية
+                  </span>
+                )}
+              </div>
+              <span className="text-xs text-slate-500 font-mono mt-1 block">
+                مفتاح الباقة: {plan.key}
+              </span>
+            </div>
+
+            {/* Status with quick 1-click Toggle */}
+            <button
+              type="button"
+              onClick={() => handleToggleActive(plan)}
+              disabled={isToggling}
+              title={plan.isActive ? "اضغط لتعطيل الباقة" : "اضغط لتفعيل الباقة"}
+              className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-xl border transition-all cursor-pointer ${
+                plan.isActive
+                  ? "bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-rose-50 hover:text-rose-700 hover:border-rose-200"
+                  : "bg-slate-100 text-slate-600 border-slate-200 hover:bg-emerald-50 hover:text-emerald-700 hover:border-emerald-200"
+              }`}
+            >
+              {isToggling ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              ) : plan.isActive ? (
+                <>
+                  <Check className="w-3.5 h-3.5 text-emerald-600" />
+                  <span>مفعل</span>
+                </>
+              ) : (
+                <>
+                  <X className="w-3.5 h-3.5 text-slate-400" />
+                  <span>معطل</span>
+                </>
+              )}
+            </button>
+          </div>
+
+          <div className="flex items-baseline gap-1 mt-4">
+            <span className="text-3xl font-black text-slate-900" dir="ltr">
+              {plan.prices?.monthly || 0}
+              <span className="text-xl ms-1">ج.م</span>
+            </span>
+            <span className="text-slate-500 font-medium">/شهرياً</span>
+            {plan.prices?.yearly ? (
+              <span className="text-xs text-slate-400 ms-3" dir="ltr">
+                ({plan.prices.yearly} ج.م سنوياً)
+              </span>
+            ) : null}
+          </div>
+        </div>
+
+        <div className="p-6 flex-1 bg-slate-50/50">
+          <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-4">
+            المميزات المضمنة
+          </h4>
+          <ul className="space-y-3">
+            {plan.marketingFeatures && plan.marketingFeatures.length > 0 ? (
+              plan.marketingFeatures.slice(0, 5).map((mf, i) => (
+                <li
+                  key={i}
+                  className="flex items-start gap-2.5 text-sm font-medium"
+                >
+                  <CheckCircle2
+                    className={`w-4 h-4 shrink-0 mt-0.5 ${mf.enabled ? "text-indigo-500" : "text-slate-300"}`}
+                  />
+                  <span
+                    className={
+                      mf.enabled
+                        ? "text-slate-700"
+                        : "text-slate-400 line-through"
+                    }
+                  >
+                    {typeof mf.name === 'object' ? (mf.name?.ar || mf.name?.en || "") : mf.name}
+                  </span>
+                </li>
+              ))
+            ) : (
+              <li className="text-sm text-slate-400">لا توجد مميزات عرض</li>
+            )}
+            {plan.marketingFeatures?.length > 5 && (
+              <li className="text-sm font-bold text-indigo-600">
+                + {plan.marketingFeatures.length - 5} مميزات أخرى
+              </li>
+            )}
+          </ul>
+        </div>
+
+        <div className="p-4 border-t border-slate-100 flex items-center justify-between bg-white">
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => {
+                setFormError("");
+                setEditModal(plan);
+              }}
+              className="flex items-center gap-1.5 px-4 py-2 text-sm font-bold text-slate-700 bg-slate-50 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"
+            >
+              <Edit2 className="w-4 h-4" /> تعديل الإعدادات
+            </button>
+            <button
+              type="button"
+              onClick={() => handleToggleActive(plan)}
+              disabled={isToggling}
+              className={`flex items-center gap-1.5 px-3 py-2 text-xs font-bold rounded-lg border transition-colors cursor-pointer ${
+                plan.isActive
+                  ? "text-rose-600 bg-rose-50/50 hover:bg-rose-100 border-rose-200"
+                  : "text-emerald-700 bg-emerald-50/50 hover:bg-emerald-100 border-emerald-200"
+              }`}
+            >
+              <Power className="w-3.5 h-3.5" />
+              <span>{plan.isActive ? "تعطيل" : "تفعيل"}</span>
+            </button>
+          </div>
+
+          {plan.key !== "free" && plan.key !== "pro" && (
+            <button
+              onClick={() => {
+                const confirmName = typeof plan.name === 'object' ? plan.name.ar : plan.name;
+                if (
+                  window.confirm(`هل أنت متأكد من حذف باقة '${confirmName}'؟`)
+                ) {
+                  setDeleteConfirm(plan);
+                }
+              }}
+              className="flex items-center gap-1.5 px-3 py-2 text-sm font-bold text-red-600 bg-red-50 hover:bg-red-100 rounded-lg transition-colors cursor-pointer"
+            >
+              <Trash2 className="w-4 h-4" /> حذف
+            </button>
+          )}
+        </div>
+      </div>
+    );
+  };
+
   return (
-    <div className="space-y-6 animate-in fade-in duration-300">
+    <div className="space-y-8 animate-in fade-in duration-300">
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-2xl font-bold text-slate-800">
             إدارة الباقات والاشتراكات
           </h2>
           <p className="text-slate-500 mt-1">
-            تحكم في الباقات المتاحة للمستخدمين وحدود كل باقة
+            الباقات الأساسية للنظام (Free, Pro) مع الخدمات الإضافية والجانبية (Payment Plus) وخيارات التفعيل والتعطيل
           </p>
         </div>
-        <button
-          onClick={() => {
-            setFormError("");
-            setAddModal(true);
-          }}
-          className="bg-indigo-600 text-white px-5 py-2.5 rounded-xl font-bold flex items-center gap-2 hover:bg-indigo-700 transition-colors"
-        >
-          <Plus className="w-5 h-5" /> إضافة باقة
-        </button>
+        <div className="flex items-center gap-3">
+          <Link
+            to="/subscriptions-stats#subscription-events-log"
+            className="bg-slate-100 hover:bg-indigo-50 text-slate-700 hover:text-indigo-600 border border-slate-200 px-4 py-2.5 rounded-xl font-bold text-sm flex items-center gap-2 transition-colors cursor-pointer"
+          >
+            <Activity className="w-4 h-4 text-indigo-600" />
+            <span>سجل أحداث وإلغاءات الاشتراكات</span>
+          </Link>
+          <button
+            onClick={() => {
+              setFormError("");
+              setAddModal(true);
+            }}
+            className="bg-indigo-600 text-white px-5 py-2.5 rounded-xl font-bold flex items-center gap-2 hover:bg-indigo-700 transition-colors cursor-pointer"
+          >
+            <Plus className="w-5 h-5" /> إضافة باقة أو خدمة
+          </button>
+        </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-        {plans.map((plan) => (
-          <div
-            key={plan._id}
-            className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden flex flex-col"
-          >
-            <div className="p-6 border-b border-slate-100">
-              <div className="flex items-start justify-between gap-2 mb-3">
-                <div>
-                  <h3 className="text-lg font-black text-slate-800">
-                    {typeof plan.name === 'object' ? plan.name.ar : plan.name}
-                  </h3>
-                  <span className="text-sm text-slate-500 font-mono">
-                    key: {plan.key}
-                  </span>
-                </div>
-                <div
-                  className={`px-2.5 py-1 text-xs font-bold rounded-full ${plan.isActive ? "bg-green-100 text-green-700" : "bg-slate-100 text-slate-600"}`}
-                >
-                  {plan.isActive ? "نشط" : "معطل"}
-                </div>
-              </div>
-              <div className="flex items-baseline gap-1 mt-4">
-                <span className="text-3xl font-black text-slate-900" dir="ltr">
-                  {plan.prices?.monthly || 0}
-                  <span className="text-xl ms-1">ج.م</span>
-                </span>
-                <span className="text-slate-500 font-medium">/شهرياً</span>
-              </div>
+      {/* SECTION 1: الباقات الأساسية (Free & Pro) */}
+      <div className="space-y-4">
+        <div className="flex items-center justify-between pb-2 border-b border-slate-200">
+          <div className="flex items-center gap-2">
+            <div className="w-8 h-8 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center font-bold">
+              <ShieldCheck className="w-5 h-5" />
             </div>
-
-            <div className="p-6 flex-1 bg-slate-50/50">
-              <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-4">
-                مميزات العرض
-              </h4>
-              <ul className="space-y-3">
-                {plan.marketingFeatures && plan.marketingFeatures.length > 0 ? (
-                  plan.marketingFeatures.slice(0, 5).map((mf, i) => (
-                    <li
-                      key={i}
-                      className="flex items-start gap-2.5 text-sm font-medium"
-                    >
-                      <CheckCircle2
-                        className={`w-4 h-4 shrink-0 mt-0.5 ${mf.enabled ? "text-indigo-500" : "text-slate-300"}`}
-                      />
-                      <span
-                        className={
-                          mf.enabled
-                            ? "text-slate-700"
-                            : "text-slate-400 line-through"
-                        }
-                      >
-                        {typeof mf.name === 'object' ? (mf.name?.ar || mf.name?.en || "") : mf.name}
-                      </span>
-                    </li>
-                  ))
-                ) : (
-                  <li className="text-sm text-slate-400">لا توجد مميزات عرض</li>
-                )}
-                {plan.marketingFeatures?.length > 5 && (
-                  <li className="text-sm font-bold text-indigo-600">
-                    + {plan.marketingFeatures.length - 5} مميزات أخرى
-                  </li>
-                )}
-              </ul>
-            </div>
-
-            <div className="p-4 border-t border-slate-100 flex items-center justify-between bg-white">
-              <button
-                onClick={() => {
-                  setFormError("");
-                  setEditModal(plan);
-                }}
-                className="flex items-center gap-1.5 px-4 py-2 text-sm font-bold text-slate-700 bg-slate-50 hover:bg-slate-100 rounded-lg transition-colors"
-              >
-                <Edit2 className="w-4 h-4" /> تعديل
-              </button>
-              {plan.key !== "free" && plan.key !== "pro" && (
-                <button
-                  onClick={() => {
-                    const confirmName = typeof plan.name === 'object' ? plan.name.ar : plan.name;
-                    if (
-                      window.confirm(`هل أنت متأكد من حذف باقة '${confirmName}'؟`)
-                    ) {
-                      setDeleteConfirm(plan); // this will trigger handleDelete if I modify handleDelete to accept id directly, but wait...
-                    }
-                  }}
-                  className="flex items-center gap-1.5 px-4 py-2 text-sm font-bold text-red-600 bg-red-50 hover:bg-red-100 rounded-lg transition-colors"
-                >
-                  <Trash2 className="w-4 h-4" /> حذف
-                </button>
-              )}
+            <div>
+              <h3 className="text-lg font-bold text-slate-800">
+                الباقات الأساسية (Core Plans)
+              </h3>
+              <p className="text-xs text-slate-500">
+                الباقات الرئيسية لحسابات المستخدمين والبروفايل الرقمي (Free & Pro)
+              </p>
             </div>
           </div>
-        ))}
+          <span className="text-xs font-bold text-slate-400 bg-slate-100 px-3 py-1 rounded-full">
+            {corePlans.length} باقة أساسية
+          </span>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-2 gap-6">
+          {corePlans.map((plan) => renderPlanCard(plan, false))}
+        </div>
+      </div>
+
+      {/* SECTION 2: الخدمات والباقات الجانبية (Add-on Services / Payment Plus) */}
+      <div className="space-y-4 pt-4">
+        <div className="flex items-center justify-between pb-2 border-b border-indigo-100">
+          <div className="flex items-center gap-2">
+            <div className="w-8 h-8 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center font-bold">
+              <Sparkles className="w-5 h-5" />
+            </div>
+            <div>
+              <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                <span>الخدمات والباقات الجانبية (Add-on Services)</span>
+                <span className="text-[11px] font-bold bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full">
+                  جانبية
+                </span>
+              </h3>
+              <p className="text-xs text-slate-500">
+                خدمات إضافية مستقلة مثل Thenith Payment Plus (صفحة الدفع الموحدة) مع إمكانية التفعيل أو التعطيل السريع
+              </p>
+            </div>
+          </div>
+          <span className="text-xs font-bold text-indigo-600 bg-indigo-50 px-3 py-1 rounded-full border border-indigo-100">
+            {addonPlans.length} خدمات جانبية
+          </span>
+        </div>
+
+        {addonPlans.length === 0 ? (
+          <div className="p-8 bg-slate-50 rounded-2xl border border-dashed border-slate-200 text-center text-slate-500">
+            لا توجد خدمات جانبية مضافة حالياً.
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+            {addonPlans.map((plan) => renderPlanCard(plan, true))}
+          </div>
+        )}
       </div>
 
       {(addModal || editModal) && (
@@ -670,8 +890,6 @@ export default function SubscriptionsManager() {
           }}
         />
       )}
-
-      {/* ConfirmModal is removed, handled natively in handleDelete if needed, but wait, handleDelete relies on deleteConfirm state. */}
     </div>
   );
 }

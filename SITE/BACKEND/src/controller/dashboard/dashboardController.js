@@ -1,27 +1,48 @@
 import Card from "../../models/Card.js";
-
+import Setting from "../../models/Setting.js";
+import Subscription from "../../models/Subscription.js";
 import Appointment from "../../models/Appointment.js";
+import ContactRequest from "../../models/ContactRequest.js";
 import _asyncHandler5014 from "../../util/asyncHandler.js";
-const { asyncHandler  } = _asyncHandler5014;
+const { asyncHandler } = _asyncHandler5014;
 import _httpError2650 from "../../util/httpError.js";
-const { HttpError  } = _httpError2650;
+const { HttpError } = _httpError2650;
 import _entitlements5136 from "../../util/entitlements.js";
-const { getFeatureLimit  } = _entitlements5136;
+const { getFeatureLimit } = _entitlements5136;
 import _dashboardNotifications8195 from "../../util/dashboardNotifications.js";
-const { addClient, removeClient  } = _dashboardNotifications8195;
+const { addClient, removeClient } = _dashboardNotifications8195;
 import _dashboardResponse2010 from "../../util/dashboardResponse.js";
-const { buildActiveCardResponse,
-  buildDashboardResponse,
- } = _dashboardResponse2010;
+const { buildActiveCardResponse, buildDashboardResponse } =
+  _dashboardResponse2010;
+import { invalidateProfileCacheForUser } from "../publicProfile/publicProfileController.js";
 
 // ── GET /api/dashboard/stream (SSE) ──────────────────────────────────────────
 const streamNotifications = (req, res) => {
   res.setHeader("Content-Type", "text/event-stream");
-  res.setHeader("Cache-Control", "no-cache");
+  res.setHeader("Cache-Control", "no-cache, no-transform");
   res.setHeader("Connection", "keep-alive");
+  res.setHeader("X-Accel-Buffering", "no");
   res.flushHeaders();
-  addClient(req.user._id.toString(), res);
-  req.on("close", () => removeClient(req.user._id.toString(), res));
+
+  res.write(": connected\n\n");
+  if (typeof res.flush === "function") res.flush();
+
+  const userId = req.user._id.toString();
+  addClient(userId, res);
+
+  const heartbeat = setInterval(() => {
+    try {
+      res.write(": heartbeat\n\n");
+      if (typeof res.flush === "function") res.flush();
+    } catch (e) {
+      clearInterval(heartbeat);
+    }
+  }, 20000);
+
+  req.on("close", () => {
+    clearInterval(heartbeat);
+    removeClient(userId, res);
+  });
 };
 
 // ── GET /api/dashboard ────────────────────────────────────────────────────────
@@ -98,6 +119,13 @@ const setActiveCard = asyncHandler(async (request, response) => {
   request.user.activeCardId = card._id;
   await request.user.save();
 
+  invalidateProfileCacheForUser(
+    request.user._id,
+    request.user.publicId,
+    request.user.username,
+    card.publicId,
+  );
+
   const allCards = await Card.find({ userId: request.user._id }).sort({
     createdAt: 1,
   });
@@ -110,8 +138,6 @@ const setActiveCard = asyncHandler(async (request, response) => {
     }),
   );
 });
-
-import ContactRequest from "../../models/ContactRequest.js";
 
 // ── DELETE /api/dashboard/cards/:cardId/requests/:requestId ──────────────────
 const deleteRequest = asyncHandler(async (req, res) => {
@@ -177,6 +203,202 @@ const markAppointmentRead = asyncHandler(async (req, res) => {
   res.json({ success: true });
 });
 
+// ── GET /api/dashboard/payment-methods ────────────────────────────────────────
+const getPaymentMethods = asyncHandler(async (req, res) => {
+  const user = req.user;
+  const [panelSetting, activeSub] = await Promise.all([
+    Setting.findOne({ key: "panel_payment_methods_config" }).lean().catch(() => null),
+    Subscription.findOne({
+      userId: user._id,
+      status: { $in: ["active", "trialing"] },
+      $or: [{ expiresAt: null }, { expiresAt: { $gt: new Date() } }],
+    })
+      .populate("planId")
+      .lean()
+      .catch(() => null),
+  ]);
+
+  const hasPaymentPlus = Boolean(
+    user.paymentPlusActive ||
+    (activeSub &&
+     (activeSub.planId?.key === "payment_plus" ||
+      activeSub.planId?.key === "pro" ||
+      activeSub.planId?.features?.get?.("unifiedPaymentHub") === true ||
+      activeSub.planId?.features?.unifiedPaymentHub === true))
+  );
+
+  res.json({
+    user: {
+      username: user.username,
+      publicId: user.publicId,
+      name: user.name,
+    },
+    paymentMethods: user.paymentMethods || [],
+    activePaymentMethodId:
+      user.activePaymentMethodId ||
+      (user.paymentMethods && user.paymentMethods.length > 0
+        ? user.paymentMethods[0].id
+        : null),
+    panelConfig: panelSetting?.value || null,
+    hasPaymentPlus,
+  });
+});
+
+// ── POST /api/dashboard/payment-methods ───────────────────────────────────────
+function sanitizeUrl(rawUrl) {
+  if (!rawUrl || typeof rawUrl !== "string") return "";
+  const trimmed = rawUrl.trim();
+  if (/^(javascript|data|vbscript|file):/i.test(trimmed)) {
+    return "";
+  }
+  return trimmed.slice(0, 500);
+}
+
+const createPaymentMethod = asyncHandler(async (req, res) => {
+  const { name, provider, link, walletNumber, accountName, customSlug, customLink } = req.body;
+  if (!name || !name.trim()) {
+    throw new HttpError(400, "Name is required");
+  }
+
+  const user = req.user;
+  if (!user.paymentMethods) user.paymentMethods = [];
+  if (user.paymentMethods.length >= 25) {
+    throw new HttpError(400, "وصلت للحد الأقصى لوسائل الدفع (25 وسيلة)");
+  }
+
+  const isFirst = user.paymentMethods.length === 0;
+  const id = `pm_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+
+  const cleanSlug = (customSlug || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]/g, "")
+    .slice(0, 50);
+
+  const newMethod = {
+    id,
+    name: name.trim().slice(0, 80),
+    provider: (provider || "vodafone_cash").trim().slice(0, 50),
+    link: sanitizeUrl(link),
+    walletNumber: (walletNumber || "").trim().slice(0, 50),
+    accountName: (accountName || "").trim().slice(0, 100),
+    customSlug: cleanSlug,
+    customLink: sanitizeUrl(customLink),
+    isActive: isFirst,
+    createdAt: new Date(),
+  };
+
+  user.paymentMethods.push(newMethod);
+
+  if (isFirst || !user.activePaymentMethodId) {
+    user.activePaymentMethodId = id;
+  }
+
+  user.markModified("paymentMethods");
+  await user.save();
+
+  res.status(201).json({
+    success: true,
+    paymentMethod: newMethod,
+    paymentMethods: user.paymentMethods,
+    activePaymentMethodId: user.activePaymentMethodId,
+  });
+});
+
+// ── PUT /api/dashboard/payment-methods/:id ────────────────────────────────────
+const updatePaymentMethod = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const { name, provider, link, walletNumber, accountName, customSlug, customLink } = req.body;
+
+  const user = req.user;
+  const methods = user.paymentMethods || [];
+  const method = methods.find((m) => m.id === id);
+
+  if (!method) {
+    throw new HttpError(404, "Payment method not found");
+  }
+
+  if (name !== undefined) method.name = name.trim().slice(0, 80);
+  if (provider !== undefined) method.provider = provider.trim().slice(0, 50);
+  if (link !== undefined) method.link = sanitizeUrl(link);
+  if (walletNumber !== undefined) method.walletNumber = (walletNumber || "").trim().slice(0, 50);
+  if (accountName !== undefined) method.accountName = (accountName || "").trim().slice(0, 100);
+  if (customSlug !== undefined) {
+    method.customSlug = customSlug
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9_-]/g, "")
+      .slice(0, 50);
+  }
+  if (customLink !== undefined) method.customLink = sanitizeUrl(customLink);
+
+  user.markModified("paymentMethods");
+  await user.save();
+
+  res.json({
+    success: true,
+    paymentMethod: method,
+    paymentMethods: user.paymentMethods,
+    activePaymentMethodId: user.activePaymentMethodId,
+  });
+});
+
+// ── PATCH /api/dashboard/payment-methods/:id/active ───────────────────────────
+const setActivePaymentMethod = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const user = req.user;
+  const methods = user.paymentMethods || [];
+  const method = methods.find((m) => m.id === id);
+
+  if (!method) {
+    throw new HttpError(404, "Payment method not found");
+  }
+
+  user.paymentMethods.forEach((m) => {
+    m.isActive = m.id === id;
+  });
+  user.activePaymentMethodId = id;
+
+  user.markModified("paymentMethods");
+  await user.save();
+
+  res.json({
+    success: true,
+    activePaymentMethodId: id,
+    paymentMethods: user.paymentMethods,
+  });
+});
+
+// ── DELETE /api/dashboard/payment-methods/:id ─────────────────────────────────
+const deletePaymentMethod = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const user = req.user;
+  const methods = user.paymentMethods || [];
+  const initialLength = methods.length;
+
+  user.paymentMethods = methods.filter((m) => m.id !== id);
+  if (user.paymentMethods.length === initialLength) {
+    throw new HttpError(404, "Payment method not found");
+  }
+
+  if (user.activePaymentMethodId === id) {
+    if (user.paymentMethods.length > 0) {
+      user.paymentMethods[0].isActive = true;
+      user.activePaymentMethodId = user.paymentMethods[0].id;
+    } else {
+      user.activePaymentMethodId = null;
+    }
+  }
+
+  user.markModified("paymentMethods");
+  await user.save();
+
+  res.json({
+    success: true,
+    paymentMethods: user.paymentMethods,
+    activePaymentMethodId: user.activePaymentMethodId,
+  });
+});
 
 export default {
   streamNotifications,
@@ -185,5 +407,10 @@ export default {
   deleteRequest,
   deleteAppointment,
   markRequestRead,
-  markAppointmentRead
+  markAppointmentRead,
+  getPaymentMethods,
+  createPaymentMethod,
+  updatePaymentMethod,
+  setActivePaymentMethod,
+  deletePaymentMethod,
 };

@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 60" width="160" height="60">
+  <rect width="160" height="60" rx="14" fill="#E60000"/>
+  <circle cx="32" cy="30" r="16" fill="#FFFFFF"/>
+  <circle cx="32" cy="30" r="11" fill="#E60000"/>
+  <path d="M32 23 C28 23 25 26 25 30 C25 34 28 37 32 37 C34 37 36 36 37 34 L33 34 C31 34 29 32 29 30 C29 28 31 26 33 26 C35 26 37 27 38 29 L39 26 C37 24 35 23 32 23 Z" fill="#FFFFFF"/>
+  <text x="56" y="32" font-family="system-ui, -apple-system, sans-serif" font-size="15" font-weight="900" fill="#FFFFFF">vodafone</text>
+  <text x="56" y="46" font-family="system-ui, -apple-system, sans-serif" font-size="12" font-weight="700" fill="#FFCCCC">CASH</text>
+</svg>

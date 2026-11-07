@@ -1,9 +1,11 @@
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
+import io from "socket.io-client";
 import { fetchProfile } from "../services/profileApi.js";
 import { normalizePortfolio } from "../utils/normalizePortfolio.js";
 import { applyProfileSeo, getNotFoundSeoData, applyPageSeo } from "../../utils/seo.js";
 import { getLocalizedErrorMessage } from "../../utils/errorHandling.js";
 import { useLanguage } from "./LanguageContext.jsx";
+import { API_BASE_URL } from "../../config/runtime.js";
 
 const STORAGE_KEY = "thenith_portfolio_data";
 const PortfolioContext = createContext(undefined);
@@ -24,8 +26,9 @@ export const PortfolioProvider = ({ children, mockProfile }) => {
     setStatus("loading");
 
     const parts = window.location.pathname.split("/").filter(Boolean);
+    const prefix = parts[0]?.toLowerCase();
     const publicId =
-      parts[0]?.toLowerCase() === "p" ? parts[1] || "" : parts[0] || "";
+      prefix === "p" || prefix === "m" ? parts[1] || "" : parts[0] || "";
 
     const cacheKey = publicId
       ? `${STORAGE_KEY}_${publicId.toLowerCase()}`
@@ -58,98 +61,129 @@ export const PortfolioProvider = ({ children, mockProfile }) => {
       }
     }
 
-    // Fetch profile from backend.
-    fetchProfile(publicId)
-      .then((nextProfile) => {
-        if (!isMounted) return;
+    const loadFreshProfile = (force = false) => {
+      fetchProfile(publicId, { force })
+        .then((nextProfile) => {
+          if (!isMounted) return;
 
-        setProfile(nextProfile);
-        setStatus("success");
-        setError("");
+          setProfile(nextProfile);
+          setStatus("success");
+          setError("");
 
-        try {
-          localStorage.setItem(cacheKey, JSON.stringify(nextProfile));
-        } catch {
-          // Ignore quota errors
-        }
+          try {
+            localStorage.setItem(cacheKey, JSON.stringify(nextProfile));
+          } catch {
+            // Ignore quota errors
+          }
 
-        /*
-         * Keep the browser URL on the FRONTEND origin.
-         *
-         * IMPORTANT:
-         * history.replaceState() cannot change the URL from:
-         *
-         *   http://localhost:3001
-         *
-         * to:
-         *
-         *
-         *
-         * because they have different origins.
-         *
-         * The backend URL should only be used for API requests.
-         */
+          const profileUrl = nextProfile?.profileUrl || `/${publicId}`;
+          let canonicalPath = `/${publicId}`;
 
-        const profileUrl = nextProfile?.profileUrl || `/${publicId}`;
+          try {
+            const parsedUrl = new URL(profileUrl, window.location.origin);
+            canonicalPath =
+              parsedUrl.pathname + parsedUrl.search + parsedUrl.hash;
 
-        let canonicalPath = `/${publicId}`;
+            if (
+              parts[0]?.toLowerCase() === "p" &&
+              !canonicalPath.toLowerCase().startsWith("/p/")
+            ) {
+              canonicalPath = `/p${canonicalPath}`;
+            }
+          } catch (urlError) {
+            canonicalPath =
+              parts[0]?.toLowerCase() === "p" ? `/p/${publicId}` : `/${publicId}`;
+          }
 
-        try {
-          const parsedUrl = new URL(profileUrl, window.location.origin);
-
+          const preferredId = nextProfile?.username || publicId;
           canonicalPath =
-            parsedUrl.pathname + parsedUrl.search + parsedUrl.hash;
+            parts[0]?.toLowerCase() === "p"
+              ? `/p/${preferredId}`
+              : `/${preferredId}`;
 
           if (
-            parts[0]?.toLowerCase() === "p" &&
-            !canonicalPath.toLowerCase().startsWith("/p/")
+            canonicalPath &&
+            canonicalPath !==
+              window.location.pathname +
+                window.location.search +
+                window.location.hash
           ) {
-            canonicalPath = `/p${canonicalPath}`;
+            window.history.replaceState(null, "", canonicalPath);
           }
-        } catch (urlError) {
-          console.warn(
-            "Invalid profileUrl returned from API:",
-            profileUrl,
-            urlError,
-          );
+        })
+        .catch((requestError) => {
+          if (!isMounted) return;
 
-          // Safe fallback to the current frontend path.
-          canonicalPath =
-            parts[0]?.toLowerCase() === "p" ? `/p/${publicId}` : `/${publicId}`;
-        }
+          if (requestError.response && requestError.response.status === 404) {
+            setStatus("not-found");
+          } else {
+            setStatus("error");
+            setError(getLocalizedErrorMessage(requestError));
+          }
+        });
+    };
 
-        // Ensure canonical path always favors user's username
-        const preferredId = nextProfile?.username || publicId;
-        canonicalPath =
-          parts[0]?.toLowerCase() === "p"
-            ? `/p/${preferredId}`
-            : `/${preferredId}`;
+    // Initial fetch
+    loadFreshProfile(false);
 
-        // Only modify the path on the current frontend origin.
-        if (
-          canonicalPath &&
-          canonicalPath !==
-            window.location.pathname +
-              window.location.search +
-              window.location.hash
-        ) {
-          window.history.replaceState(null, "", canonicalPath);
-        }
-      })
-      .catch((requestError) => {
-        if (!isMounted) return;
+    // 1. Socket.IO real-time listener for remote / multi-device updates
+    let socket = null;
+    try {
+      const socketUrl =
+        API_BASE_URL === "/api"
+          ? undefined
+          : API_BASE_URL.replace(/\/api\/?$/, "");
 
+      socket = io(socketUrl, {
+        path: "/socket.io",
+        withCredentials: true,
+        autoConnect: true,
+      });
 
-        if (requestError.response && requestError.response.status === 404) {
-          setStatus("not-found");
-        } else {
-          setStatus("error");
-          setError(getLocalizedErrorMessage(requestError));
+      socket.on("connect", () => {
+        if (publicId) {
+          socket.emit("joinProfileRoom", { identifier: publicId });
         }
       });
 
+      socket.on("profile_updated", () => {
+        loadFreshProfile(true);
+      });
+    } catch (e) {
+      // Socket fallback
+    }
+
+    // 2. BroadcastChannel for instant same-browser cross-tab live updates
+    let channel = null;
+    try {
+      channel = new BroadcastChannel("thenith_profile_sync");
+      channel.onmessage = (event) => {
+        if (event.data?.type === "PROFILE_UPDATED") {
+          loadFreshProfile(true);
+        }
+      };
+    } catch (e) {}
+
+    // 3. Storage event fallback for cross-tab sync
+    const handleStorage = (e) => {
+      if (e.key === "thenith_profile_sync_ts") {
+        loadFreshProfile(true);
+      }
+    };
+    window.addEventListener("storage", handleStorage);
+
+    // 4. Tab focus sync
+    const handleFocus = () => {
+      loadFreshProfile(true);
+    };
+    window.addEventListener("focus", handleFocus);
+
     return () => {
       isMounted = false;
+      if (socket) socket.disconnect();
+      if (channel) channel.close();
+      window.removeEventListener("storage", handleStorage);
+      window.removeEventListener("focus", handleFocus);
     };
   }, [mockProfile]);
 

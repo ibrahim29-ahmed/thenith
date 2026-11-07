@@ -2,6 +2,7 @@ import { useGlobalLanguage } from "../context/GlobalLanguageContext.jsx";
 import React, { useEffect } from "react";
 import { motion } from "framer-motion";
 import { applyPageSeo, PRODUCTION_DOMAIN } from "../utils/seo.js";
+import MainFooter from "../components/MainFooter.jsx";
 
 export default function SuggestFeature() {
   const { t, language } = useGlobalLanguage();
@@ -9,13 +10,14 @@ export default function SuggestFeature() {
   useEffect(() => {
     const isAr = language === "ar";
     const title = isAr
-      ? "اقتراح ميزة جديدة | Thenith Suggest a Feature"
+      ? "اقتراح ميزة جديدة | Thenith"
       : "Suggest a Feature | Thenith";
     const description = isAr
-      ? "شاركنا أفكارك واقتراحاتك لتطوير منصة Thenith للبطاقات الذكية والهوية الرقمية."
-      : "Share your ideas and feature requests to help improve the Thenith platform.";
+      ? "شاركنا أفكارك واقتراحاتك لتطوير منصة Thenith للبروفايل الرقمي والهوية الذكية."
+      : "Share your ideas and feature requests to help improve the Thenith digital profile platform.";
 
     applyPageSeo({
+      pageKey: "suggest",
       title,
       description,
       canonicalUrl: `${PRODUCTION_DOMAIN}/suggest`,
@@ -35,11 +37,8 @@ export default function SuggestFeature() {
     });
   }, [language]);
   return (
-    <div
-      className="min-h-screen bg-slate-50 text-slate-900 font-sans flex flex-col"
-      
-    >
-      <main className="flex-1 flex items-center justify-center p-6 relative overflow-hidden">
+    <div className="min-h-screen bg-slate-50 text-slate-900 font-sans flex flex-col">
+      <main className="flex-1 flex items-center justify-center p-6 py-28 relative overflow-hidden">
         {/* Ambient glow */}
         <div className="absolute top-1/2 start-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[500px] bg-indigo-500/10 blur-[120px] rounded-full pointer-events-none" />
 
@@ -58,6 +57,7 @@ export default function SuggestFeature() {
           </p>
         </motion.div>
       </main>
+      <MainFooter />
     </div>
   );
 }

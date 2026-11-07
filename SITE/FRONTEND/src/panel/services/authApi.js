@@ -53,8 +53,8 @@ export async function requestEmailCode(email, purpose) {
   return api.auth.requestCode(email, purpose);
 }
 
-export async function verifyEmailCode(email, code, purpose) {
-  const data = await api.auth.verifyCode(email, code, purpose);
+export async function verifyEmailCode(email, code, purpose, referralCode) {
+  const data = await api.auth.verifyCode(email, code, purpose, referralCode);
   if (data?.accessToken) saveAccessToken(data.accessToken);
   return data;
 }
@@ -67,8 +67,8 @@ export async function completeRegistration(payload) {
 
 // ─── Google OAuth ─────────────────────────────────────────────────────────────
 
-export async function googleLogin(credentialOrToken) {
-  const data = await api.auth.googleAuth(credentialOrToken);
+export async function googleLogin(credentialOrToken, referralCode) {
+  const data = await api.auth.googleAuth(credentialOrToken, referralCode);
   if (data?.accessToken) saveAccessToken(data.accessToken);
   return data;
 }
@@ -94,7 +94,6 @@ export async function saveProfile(profile) {
     orders: profile.orders || [],
   };
 
-  if (import.meta.env.DEV) 
   return api.panel.updateProfile(payload);
 }
 

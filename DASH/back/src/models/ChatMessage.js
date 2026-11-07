@@ -17,6 +17,10 @@ const chatMessageSchema = new mongoose.Schema(
       type: String, // String to accommodate both ObjectId and guestId
       required: true,
     },
+    senderName: {
+      type: String,
+      default: "",
+    },
     content: {
       type: String,
       required: true,

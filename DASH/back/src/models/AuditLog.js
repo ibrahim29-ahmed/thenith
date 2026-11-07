@@ -16,22 +16,26 @@ const auditLogSchema = new mongoose.Schema(
         "store",
         "security",
         "system",
+        // Backward-compatibility aliases:
+        "request",
+        "auth",
+        "payment",
       ],
       default: "system",
     },
-    ip: { type: String, default: "Unknown" },
-    networkIp: { type: String, default: "" },
+    ip: { type: String, default: "127.0.0.1" }, // Device IP
+    networkIp: { type: String, default: "127.0.0.1" }, // Network / Router Public IP
     country: { type: String, default: "Unknown" },
     governorate: { type: String, default: "Unknown" },
     location: { type: String, default: "Unknown" },
     userAgent: { type: String, default: "" },
     referrer: { type: String, default: "" },
-    origin: { type: String, default: "" }, // Origin header
-    fullUrl: { type: String, default: "" }, // Full request URL
-    queryString: { type: String, default: "" }, // Raw query string
-    isExternal: { type: Boolean, default: false }, // Not from allowed frontend
-    method: { type: String },
-    path: { type: String },
+    origin: { type: String, default: "" },
+    fullUrl: { type: String, default: "" },
+    queryString: { type: String, default: "" },
+    isExternal: { type: Boolean, default: false },
+    method: { type: String, default: "GET" },
+    path: { type: String, default: "" },
     userId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
@@ -52,6 +56,8 @@ auditLogSchema.index(
 auditLogSchema.index({ level: 1 });
 auditLogSchema.index({ category: 1 });
 auditLogSchema.index({ ip: 1 });
+auditLogSchema.index({ networkIp: 1 });
+auditLogSchema.index({ userId: 1 });
 auditLogSchema.index({ isExternal: 1 });
 
 const AuditLog = mongoose.model("AuditLog", auditLogSchema);

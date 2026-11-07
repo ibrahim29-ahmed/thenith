@@ -16,8 +16,13 @@ const server = http.createServer(app);
 const ioInstance = await initSocket(server);
 setIO(ioInstance);
 
+import { startAuditLogWatcher } from "./services/auditWatcher.js";
+import { startSubscriptionExpiryJob } from "./jobs/expireSubscriptions.job.js";
+
 try {
   await connectDatabase();
+  startAuditLogWatcher();
+  startSubscriptionExpiryJob();
 
   server.listen(env.PORT, "0.0.0.0", () => {
     console.log(`Admin Server running on port ${env.PORT} (0.0.0.0)`);

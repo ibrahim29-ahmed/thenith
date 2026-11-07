@@ -2,6 +2,7 @@ import Plan from "../models/Plan.js";
 import Subscription from "../models/Subscription.js";
 import Usage from "../models/Usage.js";
 import Card from "../models/Card.js";
+import User from "../models/User.js";
 import _subscription788 from "../util/subscription.js";
 const { getDaysRemaining  } = _subscription788;
 import _entitlements6033 from "../util/entitlements.js";
@@ -38,14 +39,28 @@ async function getSubscriptionState(userId, includeUsage = false) {
   const month = new Date().toISOString().slice(0, 7);
 
   // Fetch free plan from memory/DB and query subscription concurrently
-  const [freePlan, subscription, usageDoc, cardsTotalStored] = await Promise.all([
+  const [freePlan, subscription, usageDoc, cardsTotalStored, userDoc] = await Promise.all([
     getCachedFreePlan(),
-    Subscription.findOne({ userId })
-      .sort({ updatedAt: -1 })
-      .populate("planId")
-      .lean(),
+    (async () => {
+      let sub = await Subscription.findOne({
+        userId,
+        status: { $in: ["active", "trialing"] },
+        $or: [{ expiresAt: null }, { expiresAt: { $gt: new Date() } }],
+      })
+        .sort({ updatedAt: -1 })
+        .populate("planId")
+        .lean();
+      if (!sub) {
+        sub = await Subscription.findOne({ userId })
+          .sort({ updatedAt: -1 })
+          .populate("planId")
+          .lean();
+      }
+      return sub;
+    })(),
     includeUsage ? Usage.findOne({ userId, month }).lean() : Promise.resolve(null),
     includeUsage ? Card.countDocuments({ userId }) : Promise.resolve(undefined),
+    User.findById(userId).select("paymentPlusActive").lean(),
   ]);
 
   const isExpired =
@@ -60,7 +75,12 @@ async function getSubscriptionState(userId, includeUsage = false) {
     : freePlan
       ? (typeof freePlan.toObject === "function" ? freePlan.toObject() : freePlan)
       : { key: "free", features: {}, limits: {} };
-  const planKey = definition.key === "pro" ? "pro" : "free";
+  const planKey = (isEntitled && definition.key) ? definition.key : (definition.key === "pro" ? "pro" : "free");
+
+  const isPaymentPlusActive = Boolean(
+    userDoc?.paymentPlusActive ||
+    (isEntitled && (definition.key === "payment_plus" || definition.key === "pro"))
+  );
 
   const brUsed = usageDoc?.businessRequests || 0;
 
@@ -89,6 +109,13 @@ async function getSubscriptionState(userId, includeUsage = false) {
     daysRemaining: isExpired ? 0 : getDaysRemaining(subscription?.expiresAt),
     usage: { month, businessRequests: brUsed },
     entitlements,
+    autoRenew: subscription?.autoRenew ?? false,
+    savedCard: subscription?.savedCard || null,
+    intentKey: subscription?.intentKey || null,
+    paymentMethod: subscription?.paymentMethod || null,
+    lastRenewalAt: subscription?.lastRenewalAt || null,
+    paymentPlusActive: isPaymentPlusActive,
+    hasPaymentPlus: isPaymentPlusActive,
   };
 }
 

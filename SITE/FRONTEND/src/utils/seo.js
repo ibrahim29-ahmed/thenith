@@ -29,6 +29,16 @@ export const PRODUCTION_DOMAIN = getEnvVar(
 
 export const DEFAULT_SITE_NAME = "Thenith";
 
+export function getSiteName(customName) {
+  if (customName && typeof customName === "string" && customName.trim()) {
+    return customName.trim();
+  }
+  if (typeof window !== "undefined" && window.__SITE_NAME__) {
+    return window.__SITE_NAME__;
+  }
+  return DEFAULT_SITE_NAME;
+}
+
 export const DEFAULT_OG_IMAGE = `${PRODUCTION_DOMAIN}/icon512.png`;
 
 /**
@@ -242,8 +252,10 @@ export function setRobots(directives = "index, follow") {
  * Applies a complete bundle of SEO tags to the current page.
  */
 export function applyPageSeo({
+  pageKey,
   title,
   description,
+  keywords,
   canonicalUrl,
   robots = "index, follow",
   openGraph = {},
@@ -251,14 +263,48 @@ export function applyPageSeo({
   jsonLd = null,
   jsonLdId = "primary",
   breadcrumbs = null,
-  lang,
+  lang = "ar",
   dir,
 }) {
   if (typeof document === "undefined") return;
 
+  const isEn = lang === "en";
+  const langKey = isEn ? "en" : "ar";
+
+  const customPageSeo =
+    pageKey && typeof window !== "undefined" && window.__SITE_SETTINGS__?.seo_pages?.[pageKey];
+
+  const langData = customPageSeo?.[langKey];
+
+  const targetTitle =
+    langData?.title ||
+    (isEn ? customPageSeo?.title_en : customPageSeo?.title_ar) ||
+    customPageSeo?.title ||
+    title;
+
+  const targetDesc =
+    langData?.description ||
+    (isEn ? customPageSeo?.desc_en : customPageSeo?.desc_ar) ||
+    customPageSeo?.description ||
+    description;
+
+  const targetKeywords =
+    langData?.keywords ||
+    (isEn ? customPageSeo?.keywords_en : customPageSeo?.keywords_ar) ||
+    customPageSeo?.keywords ||
+    keywords;
+
+  const targetRobots = customPageSeo?.robots || robots;
+  const targetOgImage = customPageSeo?.ogImage || openGraph?.image;
+
   // Title
-  if (title) {
-    document.title = title;
+  if (targetTitle) {
+    const activeSiteName = getSiteName();
+    let finalTitle = targetTitle;
+    if (activeSiteName && activeSiteName !== "Thenith") {
+      finalTitle = finalTitle.replace(/Thenith/gi, activeSiteName);
+    }
+    document.title = finalTitle;
   }
 
   // Language & direction on <html>
@@ -267,11 +313,23 @@ export function applyPageSeo({
   }
   if (dir) {
     document.documentElement.setAttribute("dir", dir);
+  } else if (lang) {
+    document.documentElement.setAttribute("dir", isEn ? "ltr" : "rtl");
   }
 
   // Meta description
-  if (description) {
-    setMetaTag('meta[name="description"]', "content", sanitizeText(description));
+  if (targetDesc) {
+    setMetaTag('meta[name="description"]', "content", sanitizeText(targetDesc));
+  }
+
+  // Meta keywords
+  if (targetKeywords) {
+    setMetaTag('meta[name="keywords"]', "content", sanitizeText(targetKeywords));
+  }
+
+  // Robots
+  if (targetRobots) {
+    setMetaTag('meta[name="robots"]', "content", targetRobots);
   }
 
   // Canonical
@@ -283,16 +341,16 @@ export function applyPageSeo({
   setHreflangAlternates(normalizedCanonical);
 
   // Robots
-  setRobots(robots);
+  setRobots(targetRobots || robots);
 
   // Open Graph
-  const ogTitle = openGraph.title || title;
-  const ogDesc = openGraph.description || description;
+  const ogTitle = openGraph.title || targetTitle || title;
+  const ogDesc = openGraph.description || targetDesc || description;
   const ogUrl = openGraph.url || normalizedCanonical;
-  const ogImage = openGraph.image || DEFAULT_OG_IMAGE;
+  const ogImage = targetOgImage || openGraph.image || DEFAULT_OG_IMAGE;
   const ogType = openGraph.type || "website";
-  const ogSiteName = openGraph.siteName || DEFAULT_SITE_NAME;
-  const ogLocale = openGraph.locale || (lang === "en" ? "en_US" : "ar_AR");
+  const ogSiteName = openGraph.siteName || getSiteName();
+  const ogLocale = openGraph.locale || (isEn ? "en_US" : "ar_AR");
 
   setMetaTag('meta[property="og:title"]', "content", ogTitle);
   setMetaTag('meta[property="og:description"]', "content", sanitizeText(ogDesc));
@@ -335,16 +393,18 @@ export function applyPageSeo({
 /**
  * Generates SEO metadata for the Landing Page.
  */
-export function getLandingPageSeoData(lang = "ar") {
+export function getLandingPageSeoData(lang = "ar", customSiteName = "") {
   const isAr = lang === "ar";
+  const defaultBrand = "Thenith";
+  const currentSiteName = customSiteName?.trim() || (typeof window !== "undefined" && window.__SITE_NAME__) || defaultBrand;
 
   const title = isAr
-    ? "Thenith — بطاقات رقمية ذكية وهوية احترافية بتقنية NFC | Smart Digital Cards"
-    : "Thenith — Smart Digital Cards & Professional NFC Identity";
+    ? `${currentSiteName} — بروفايلك الرقمي الذكي المتكامل وهويتك الاحترافية`
+    : `${currentSiteName} — All-in-One Smart Digital Profile & Interactive Bio`;
 
   const description = isAr
-    ? "ارتقِ بهويتك الرقمية مع Thenith. بطاقات أعمال ذكية فاخرة بتقنية NFC وQR، وصفحة رقمية متكاملة تجمع بياناتك وأعمالك وروابطك وتتيح حجز المواعيد واستقبال العملاء بسهولة."
-    : "Elevate your digital presence with Thenith. Premium NFC & QR smart business cards and an all-in-one digital profile to share contacts, portfolio, and schedule appointments effortlessly.";
+    ? `أنشئ بروفايلك الرقمي الذكي المتكامل مع ${currentSiteName}. صفحة شخصية موحدة تجمع كافة روابطك، أعمالك، وسائل التواصل، وحجز المواعيد واستقبال العملاء، مع إمكانية ربط كارت NFC ذكي اختياري لمشاركة هويتك بلمسة واحدة.`
+    : `Build your all-in-one smart digital profile with ${currentSiteName}. Showcase all your links, portfolio, contact methods, and appointments in one place — with an optional NFC smart card to connect with a single tap.`;
 
   const canonicalUrl = `${PRODUCTION_DOMAIN}/`;
 
@@ -374,8 +434,8 @@ export function getLandingPageSeoData(lang = "ar") {
           "height": 512,
         },
         "description": isAr
-          ? "المنصة الرائدة في حلول البطاقات الذكية الفاخرة والهوية الرقمية للأفراد والشركات في الشرق الأوسط"
-          : "Leading platform for luxury smart NFC cards and professional digital identity profiles.",
+          ? "المنصة الرائدة في إنشاء البروفايل الرقمي الذكي المتكامل وحلول الهوية وبطاقات NFC للأفراد والشركات في الشرق الأوسط"
+          : "Leading platform for all-in-one smart digital profiles and NFC business card identity in the Middle East.",
         "email": "info@thenith.com",
         "contactPoint": {
           "@type": "ContactPoint",
@@ -415,13 +475,15 @@ export function getLandingPageSeoData(lang = "ar") {
 /**
  * Builds accurate title for an individual or business profile without fabrication.
  */
-export function formatProfileTitle(profile) {
-  if (!profile) return `Thenith — بطاقة رقمية ذكية`;
+export function formatProfileTitle(profile, lang = "ar") {
+  const isAr = lang === "ar";
+  const brand = "Thenith";
+  if (!profile) return isAr ? `بروفايل رقمي ذكي | ${brand}` : `Smart Digital Profile | ${brand}`;
 
   if (profile.seo?.title) {
-    return profile.seo.title.includes("Thenith")
+    return profile.seo.title.includes(brand)
       ? profile.seo.title
-      : `${profile.seo.title} | Thenith`;
+      : `${profile.seo.title} | ${brand}`;
   }
 
   const name = sanitizeText(profile.name || profile.personal?.fullName);
@@ -435,25 +497,26 @@ export function formatProfileTitle(profile) {
 
   if (isBusiness) {
     const businessName = company || name;
-    const services = role || "خدمات وحلول رقمية";
-    return `${businessName} — ${services} | Thenith`;
+    const services = role || (isAr ? "خدمات وحلول رقمية" : "Digital Services & Solutions");
+    return `${businessName} — ${services} | ${brand}`;
   }
 
   // Personal profile formatting: "Name — Role at Company | Thenith" or "Name — Role | Thenith"
   if (name && role && company) {
-    return `${name} — ${role} at ${company} | Thenith`;
+    const atWord = isAr ? "في" : "at";
+    return `${name} — ${role} ${atWord} ${company} | ${brand}`;
   }
   if (name && role) {
-    return `${name} — ${role} | Thenith`;
+    return `${name} — ${role} | ${brand}`;
   }
   if (name && company) {
-    return `${name} — ${company} | Thenith`;
+    return `${name} — ${company} | ${brand}`;
   }
   if (name) {
-    return `${name} | Thenith`;
+    return `${name} | ${brand}`;
   }
 
-  return `Thenith — بطاقة رقمية ذكية`;
+  return isAr ? `بروفايل رقمي ذكي | ${brand}` : `Smart Digital Profile | ${brand}`;
 }
 
 /**
@@ -597,6 +660,7 @@ export function getProfileSeoData(profile, options = {}) {
 
   // Handle inactive, private, or locked profiles
   if (profile.isActive === false || profile.isPrivate) {
+    const brand = "Thenith";
     return {
       title: language === "en" ? "Private Profile | Thenith" : "بروفايل خاص | Thenith",
       description: language === "en" ? "This profile is private." : "هذا البروفايل خاص وغير متاح للعرض العام.",
@@ -607,20 +671,20 @@ export function getProfileSeoData(profile, options = {}) {
       ),
       robots: "noindex, nofollow",
       openGraph: {
-        title: "Thenith",
-        description: "هذا البروفايل غير متاح للعرض العام.",
+        title: brand,
+        description: language === "en" ? "This profile is private." : "هذا البروفايل غير متاح للعرض العام.",
         type: "profile",
       },
       twitter: {
         card: "summary",
-        title: "Thenith",
+        title: brand,
       },
       jsonLd: null,
       jsonLdId: "profile",
     };
   }
 
-  const title = formatProfileTitle(profile);
+  const title = formatProfileTitle(profile, language);
   const description = formatProfileDescription(profile, language);
 
   // Canonical identifier preference: username > publicId

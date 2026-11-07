@@ -34,6 +34,11 @@ const couponSchema = new mongoose.Schema(
       enum: ["all", "store", "subscriptions"],
       default: "all",
     },
+    applyMode: {
+      type: String,
+      enum: ["code", "auto"],
+      default: "code",
+    },
     maxUses: {
       type: Number,
       default: null, // null means unlimited
@@ -41,6 +46,11 @@ const couponSchema = new mongoose.Schema(
     usedCount: {
       type: Number,
       default: 0,
+    },
+    usedBy: {
+      type: [mongoose.Schema.Types.ObjectId],
+      ref: "User",
+      default: [],
     },
     expiresAt: {
       type: Date,
@@ -58,11 +68,13 @@ couponSchema.methods.calculateDiscount = function (
   baseAmount,
   target = "all",
   billingPeriod = null,
+  userId = null,
 ) {
   if (!this.isActive) return 0;
   if (this.expiresAt && new Date() > new Date(this.expiresAt)) return 0;
   if (this.maxUses !== null && this.usedCount >= this.maxUses) return 0;
   if (this.appliesTo !== "all" && this.appliesTo !== target) return 0;
+  if (userId && this.usedBy && this.usedBy.some(id => id.toString() === userId.toString())) return 0;
 
   let val = this.discountValue;
   if (billingPeriod === "monthly" && this.monthlyDiscountValue != null) {

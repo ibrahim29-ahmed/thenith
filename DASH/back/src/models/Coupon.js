@@ -34,6 +34,11 @@ const couponSchema = new mongoose.Schema(
       enum: ["all", "store", "subscriptions"],
       default: "all",
     },
+    applyMode: {
+      type: String,
+      enum: ["code", "auto"],
+      default: "code",
+    },
     maxUses: {
       type: Number,
       default: null, // null means unlimited
@@ -41,6 +46,11 @@ const couponSchema = new mongoose.Schema(
     usedCount: {
       type: Number,
       default: 0,
+    },
+    usedBy: {
+      type: [mongoose.Schema.Types.ObjectId],
+      ref: "User",
+      default: [],
     },
     expiresAt: {
       type: Date,

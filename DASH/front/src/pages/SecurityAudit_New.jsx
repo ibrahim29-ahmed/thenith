@@ -513,7 +513,7 @@ export default function SecurityAudit() {
                           )}
                         </td>
                         <td className="px-5 py-4 text-slate-600 dark:text-slate-400 text-xs ">
-                          {new Date(log.createdAt).toLocaleString()}
+                          {new Date(log.createdAt).toLocaleString("en-US")}
                         </td>
                         <td className="px-5 py-4">
                           <button
@@ -598,7 +598,7 @@ export default function SecurityAudit() {
             </div>
 
             {[...logs].reverse().map((log) => {
-              const time = new Date(log.createdAt).toLocaleTimeString();
+              const time = new Date(log.createdAt).toLocaleTimeString("en-US");
               const color = getCmdColor(log);
               const identity = log.userId
                 ? log.userId.username ||
@@ -802,7 +802,7 @@ export default function SecurityAudit() {
                       Time
                     </label>
                     <p className="text-slate-800 dark:text-slate-100 mt-1">
-                      {new Date(selectedLog.createdAt).toLocaleString()}
+                      {new Date(selectedLog.createdAt).toLocaleString("en-US")}
                     </p>
                   </div>
                   <div className="col-span-2">

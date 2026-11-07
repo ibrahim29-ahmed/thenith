@@ -31,6 +31,7 @@ import _dashboardNotifications1234 from "../../util/dashboardNotifications.js";
 const { notifyUser } = _dashboardNotifications1234;
 import _entitlements from "../../util/entitlements.js";
 const { canAccess, getFeatureLimit } = _entitlements;
+import { invalidateProfileCacheForUser } from "../../controller/publicProfile/publicProfileController.js";
 
 const router = Router();
 router.use(requireAuth);
@@ -101,6 +102,8 @@ router.patch(
     }
 
     await user.save();
+
+    invalidateProfileCacheForUser(user._id, user.publicId, user.username);
 
     response.json({
       profile: {
@@ -190,6 +193,8 @@ router.post(
     if (emailInUse) throw new HttpError(409, "Email is already in use");
     user.secondaryEmails = [...(user.secondaryEmails || []), email];
     await user.save();
+
+    invalidateProfileCacheForUser(user._id, user.publicId, user.username);
     await OtpCode.deleteOne({ _id: record._id });
 
     response.json({
@@ -240,6 +245,8 @@ router.delete(
       user.secondaryEmails = secondaryEmails.filter((item) => item !== email);
     }
     await user.save();
+
+    invalidateProfileCacheForUser(user._id, user.publicId, user.username);
     if (promotingSecondary) {
       await Order.updateMany(
         { userId: user._id },
@@ -416,7 +423,12 @@ router.get(
     const subscriptions = transactions.map((tx) => {
       const fawryCode = tx.paymentData?.fawryCode || null;
       const fawryCodeExpiry =
-        tx.paymentData?.expireDate || tx.paymentData?.expiryDate || null;
+        tx.fawaterakExpireDate ||
+        tx.paymentData?.fawaterakExpireDate ||
+        tx.paymentData?.expirationTime ||
+        tx.paymentData?.expireDate ||
+        tx.paymentData?.expiryDate ||
+        null;
       const mobileWalletNumber = tx.paymentData?.mobileWalletNumber || null;
 
       return {

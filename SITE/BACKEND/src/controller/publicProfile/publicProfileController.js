@@ -1,4 +1,6 @@
 import mongoose from "mongoose";
+import Setting from "../../models/Setting.js";
+import Subscription from "../../models/Subscription.js";
 import _asyncHandler2226 from "../../util/asyncHandler.js";
 const { asyncHandler } = _asyncHandler2226;
 import _httpError391 from "../../util/httpError.js";
@@ -6,6 +8,12 @@ const { HttpError } = _httpError391;
 import Card, { ensurePrimaryContacts } from "../../models/Card.js";
 import User from "../../models/User.js";
 import ContactRequest from "../../models/ContactRequest.js";
+import CustomerService from "../../models/CustomerService.js";
+import ChatMessage from "../../models/ChatMessage.js";
+import {
+  broadcastNewMessage,
+  broadcastTicketUpdate,
+} from "../../services/supportBroadcast.js";
 import _subscriptionService4542 from "../../services/subscriptionService.js";
 const { getSubscriptionState } = _subscriptionService4542;
 import _entitlements1852 from "../../util/entitlements.js";
@@ -31,7 +39,37 @@ export function invalidateProfileCache(identifier = null) {
   }
 }
 
-export function invalidateProfileCacheForUser(userId, publicId = null, username = null) {
+export async function notifyProfileUpdate(userId, publicId = null, username = null, cardPublicId = null) {
+  try {
+    const socketService = (await import("../../services/socketService.js")).default;
+    const io = await socketService.getIO().catch(() => null);
+    if (!io) return;
+
+    const payload = {
+      userId: String(userId),
+      publicId: publicId ? String(publicId).toLowerCase() : null,
+      username: username ? String(username).toLowerCase() : null,
+      cardPublicId: cardPublicId ? String(cardPublicId).toLowerCase() : null,
+      timestamp: Date.now(),
+    };
+
+    const targets = new Set();
+    if (userId) targets.add(`user_${userId}`);
+    if (userId) targets.add(`profile_user_${userId}`);
+    if (publicId) targets.add(`profile_${String(publicId).toLowerCase()}`);
+    if (username) targets.add(`profile_${String(username).toLowerCase()}`);
+    if (cardPublicId) targets.add(`profile_${String(cardPublicId).toLowerCase()}`);
+
+    for (const room of targets) {
+      const roomTarget = socketService.getRoomTarget(io, room);
+      roomTarget?.emit("profile_updated", payload);
+    }
+  } catch (err) {
+    // Ignore socket error
+  }
+}
+
+export function invalidateProfileCacheForUser(userId, publicId = null, username = null, cardPublicId = null) {
   if (publicId) {
     const pKey = String(publicId).trim().toLowerCase();
     profileCache.delete(pKey);
@@ -42,12 +80,20 @@ export function invalidateProfileCacheForUser(userId, publicId = null, username 
     profileCache.delete(uKey);
     negative404Cache.delete(uKey);
   }
+  if (cardPublicId) {
+    const cKey = String(cardPublicId).trim().toLowerCase();
+    profileCache.delete(cKey);
+    negative404Cache.delete(cKey);
+  }
   const uIdStr = String(userId);
   for (const [key, val] of profileCache.entries()) {
-    if (val.userId === uIdStr || val.data?.userPublicId === publicId) {
+    if (val.userId === uIdStr || (publicId && val.data?.userPublicId === publicId)) {
       profileCache.delete(key);
     }
   }
+
+  // Realtime notification to all connected profile visitors
+  notifyProfileUpdate(userId, publicId, username, cardPublicId);
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -62,13 +108,22 @@ async function findCardById(identifier) {
   return card;
 }
 
+function escapeRegex(str) {
+  return String(str || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 async function findUserByPublicIdentifier(identifier) {
   const normalized = identifier.trim().toLowerCase();
+  const safeNormalized = escapeRegex(normalized);
   const user = await User.findOne({
     isActive: { $ne: false },
-    $or: [{ publicId: normalized }, { username: normalized }],
+    $or: [
+      { publicId: { $regex: new RegExp(`^${safeNormalized}$`, "i") } },
+      { username: { $regex: new RegExp(`^${safeNormalized}$`, "i") } },
+      ...(mongoose.Types.ObjectId.isValid(identifier) ? [{ _id: identifier }] : []),
+    ],
   })
-    .select("_id publicId username activeCardId isActive")
+    .select("_id publicId username activeCardId isActive paymentMethods activePaymentMethodId name avatar")
     .lean();
   if (!user) throw new HttpError(404, "Public profile not found");
   return user;
@@ -133,7 +188,11 @@ const getPublicProfile = asyncHandler(async (request, response) => {
   }
 
   const maxCards = getFeatureLimit(subscription.entitlements, "maxCards");
-  if (maxCards !== null) {
+  const isActiveCard =
+    String(card._id) === String(user?.activeCardId) ||
+    card.isActive === true;
+
+  if (maxCards !== null && !isActiveCard) {
     const earlierCards = await Card.countDocuments({
       userId: card.userId,
       createdAt: { $lt: card.createdAt },
@@ -160,6 +219,8 @@ const getPublicProfile = asyncHandler(async (request, response) => {
     userPublicId: user?.publicId || null,
     username: canUseUsername ? user.username : null,
     profileUrl: primaryLink,
+    paymentMethods: Array.isArray(user?.paymentMethods) ? user.paymentMethods : [],
+    activePaymentMethodId: user?.activePaymentMethodId || null,
   };
 
   // Cache positive response (LRU eviction if limit reached)
@@ -180,6 +241,149 @@ const getPublicProfile = asyncHandler(async (request, response) => {
   response.json(responsePayload);
 });
 
+// ── GET /m/:identifier & /public/wallet/:identifier ──────────────────────────
+const resolvePublicWallet = asyncHandler(async (req, res) => {
+  const { identifier } = req.params;
+  const payParam = (req.query.pay || "").trim();
+
+  if (!identifier) {
+    throw new HttpError(400, "Identifier is required");
+  }
+
+  const normalized = identifier.trim().toLowerCase();
+  const safeNormalized = escapeRegex(normalized);
+  const user = await User.findOne({
+    isActive: { $ne: false },
+    $or: [
+      { publicId: { $regex: new RegExp(`^${safeNormalized}$`, "i") } },
+      { username: { $regex: new RegExp(`^${safeNormalized}$`, "i") } },
+      ...(mongoose.Types.ObjectId.isValid(identifier) ? [{ _id: identifier }] : []),
+    ],
+  })
+    .select("_id name username publicId paymentMethods activePaymentMethodId avatar paymentPlusActive")
+    .lean();
+
+  if (!user) {
+    throw new HttpError(404, "المستخدم أو المحفظة المطلوبة غير موجودة");
+  }
+
+  const methods = Array.isArray(user.paymentMethods) ? user.paymentMethods : [];
+
+  // Check subscription entitlement for unified payment hub
+  const activeSub = await Subscription.findOne({
+    userId: user._id,
+    status: { $in: ["active", "trialing"] },
+    $or: [{ expiresAt: null }, { expiresAt: { $gt: new Date() } }],
+  })
+    .populate("planId")
+    .lean()
+    .catch(() => null);
+
+  const hasPaymentPlus = Boolean(
+    user.paymentPlusActive ||
+    (activeSub &&
+     (activeSub.planId?.key === "payment_plus" ||
+      activeSub.planId?.key === "pro" ||
+      activeSub.planId?.features?.get?.("unifiedPaymentHub") === true ||
+      activeSub.planId?.features?.unifiedPaymentHub === true))
+  );
+
+  // Match target method by payParam (id, customSlug, or provider)
+  let targetMethod = null;
+  if (payParam) {
+    targetMethod = methods.find(
+      (m) =>
+        m.id === payParam ||
+        m.customSlug === payParam ||
+        m.provider?.toLowerCase() === payParam.toLowerCase()
+    );
+  }
+
+  // Fallback to active payment method or first method
+  if (!targetMethod) {
+    if (user.activePaymentMethodId) {
+      targetMethod = methods.find((m) => m.id === user.activePaymentMethodId);
+    }
+    if (!targetMethod && methods.length > 0) {
+      targetMethod = methods[0];
+    }
+  }
+
+  // Unified hub access policy:
+  // If user does NOT have the Payment Plus plan, access to the unified hub is strictly disabled.
+  // Instead, the request automatically redirects on the same link to their primary active wallet!
+  const canAccessUnifiedHub = hasPaymentPlus && !payParam;
+
+  // If not entitled to unified hub, force targetMethod to active payment method
+  if (!hasPaymentPlus && !payParam) {
+    const primaryMethod = user.activePaymentMethodId
+      ? methods.find((m) => m.id === user.activePaymentMethodId)
+      : null;
+    targetMethod = primaryMethod || targetMethod || methods[0] || null;
+  }
+
+  // If direct browser redirect is requested via ?redirect=true or header
+  if (req.query.redirect === "true" && targetMethod?.link) {
+    let targetUrl = targetMethod.link.trim();
+    if (!/^https?:\/\//i.test(targetUrl)) targetUrl = "https://" + targetUrl;
+    if (/^(javascript|data|vbscript|file):/i.test(targetUrl)) {
+      throw new HttpError(400, "Invalid redirect URL");
+    }
+    return res.redirect(targetUrl);
+  }
+
+  const panelSetting = await Setting.findOne({ key: "panel_payment_methods_config" }).lean().catch(() => null);
+
+  res.json({
+    success: true,
+    user: {
+      id: user._id,
+      name: user.name,
+      username: user.username,
+      publicId: user.publicId,
+      avatar: user.avatar,
+    },
+    panelConfig: panelSetting?.value || null,
+    hasPaymentPlus,
+    canAccessUnifiedHub,
+    method: targetMethod
+      ? {
+          id: targetMethod.id,
+          name: targetMethod.name,
+          provider: targetMethod.provider,
+          link: targetMethod.link,
+          walletNumber: targetMethod.walletNumber || "",
+          accountName: targetMethod.accountName || "",
+          customSlug: targetMethod.customSlug,
+          isActive: targetMethod.id === user.activePaymentMethodId,
+        }
+      : null,
+    allMethods: canAccessUnifiedHub
+      ? methods.map((m) => ({
+          id: m.id,
+          name: m.name,
+          provider: m.provider,
+          link: m.link,
+          walletNumber: m.walletNumber || "",
+          accountName: m.accountName || "",
+          customSlug: m.customSlug,
+          isActive: m.id === user.activePaymentMethodId,
+        }))
+      : targetMethod
+      ? [{
+          id: targetMethod.id,
+          name: targetMethod.name,
+          provider: targetMethod.provider,
+          link: targetMethod.link,
+          walletNumber: targetMethod.walletNumber || "",
+          accountName: targetMethod.accountName || "",
+          customSlug: targetMethod.customSlug,
+          isActive: true,
+        }]
+      : [],
+  });
+});
+
 // ── POST /public/contact ──────────────────────────────────────────────────────
 const submitContact = asyncHandler(async (req, res) => {
   const name = String(req.body?.name || "")
@@ -192,7 +396,7 @@ const submitContact = asyncHandler(async (req, res) => {
   const phone = String(req.body?.phone || "")
     .trim()
     .slice(0, 40);
-  const subject = String(req.body?.subject || "بدون عنوان")
+  const subject = String(req.body?.subject || "رسالة تواصل من صفحة الهبوط")
     .trim()
     .slice(0, 160);
   const message = String(req.body?.message || "")
@@ -204,21 +408,55 @@ const submitContact = asyncHandler(async (req, res) => {
   if (!/^\S+@\S+\.\S+$/.test(email)) {
     throw new HttpError(400, "A valid email address is required");
   }
+
+  // 1. Create ContactRequest for "صندوق الرسائل" (InboxManager)
   await ContactRequest.create({
     type: "platform_contact",
     name,
     email,
     phone: phone || "",
-    subject: subject || "بدون عنوان",
+    subject: subject || "رسالة تواصل من صفحة الهبوط",
     message,
     isRead: false,
   });
+
+  // 2. Create Support Ticket and Message for "الدعم الفني" (SupportDesk)
+  try {
+    let guestId = req.cookies?.supportGuestId || req.body?.guestId;
+    if (!guestId) {
+      guestId = `contact_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+    }
+    const ticket = await CustomerService.create({
+      guestId,
+      name,
+      email,
+      ipAddress: req.ip,
+      status: "open",
+      unreadAdmin: 1,
+      lastMessageAt: new Date(),
+    });
+
+    const chatMsg = await ChatMessage.create({
+      customerService: ticket._id,
+      senderModel: "Guest",
+      senderId: guestId,
+      content: message,
+    });
+
+    broadcastTicketUpdate(ticket, false).catch(() => {});
+    broadcastNewMessage(chatMsg, ticket).catch(() => {});
+  } catch (supportErr) {
+    console.error("[submitContact] Failed to sync to SupportDesk:", supportErr.message);
+  }
+
   res.status(201).json({ success: true, message: "تم إرسال رسالتك بنجاح." });
 });
 
 export default {
   getPublicProfile,
+  resolvePublicWallet,
   submitContact,
   invalidateProfileCache,
   invalidateProfileCacheForUser,
+  notifyProfileUpdate,
 };

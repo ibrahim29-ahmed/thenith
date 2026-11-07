@@ -15,14 +15,9 @@ export function generateInternalCardId() {
   return `THN-C-${random}`;
 }
 
-// 6-character alphanumeric Card Password generator (e.g. 7K9P2X)
+// 6-digit numeric Card Password generator (numbers only, e.g. 582194)
 export function generateCardPassword6() {
-  const chars = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ";
-  let random = "";
-  for (let i = 0; i < 6; i++) {
-    random += chars.charAt(Math.floor(Math.random() * chars.length));
-  }
-  return random;
+  return Math.floor(100000 + Math.random() * 900000).toString();
 }
 
 const physicalCardSchema = new mongoose.Schema(
@@ -64,6 +59,37 @@ const physicalCardSchema = new mongoose.Schema(
       trim: true,
     },
 
+    // Product / Item name (e.g. كارت ذكي، ميدالية، ستاند طاولة، كت...)
+    name: {
+      type: String,
+      default: "",
+      trim: true,
+      index: true,
+    },
+
+    // Smart Product Line reference (optional)
+    smartProductId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "SmartProduct",
+      default: null,
+      index: true,
+    },
+
+    // Hardware item type (card, keychain, stand, kit, sticker, etc.)
+    productType: {
+      type: String,
+      default: "card",
+      index: true,
+    },
+
+    // NFC Chip Type (e.g. NTAG215, NTAG213, NTAG216, Mifare...)
+    nfcChipType: {
+      type: String,
+      default: "NTAG215",
+      trim: true,
+      index: true,
+    },
+
     // Card material/tier
     cardType: {
       type: String,
@@ -75,9 +101,35 @@ const physicalCardSchema = new mongoose.Schema(
     // Color of the physical card
     color: {
       type: String,
-      enum: ["black", "white", "blue", "purple", "silver", "gold", "custom"],
       default: "black",
+      trim: true,
       index: true,
+    },
+
+    // Order tracking references
+    orderId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Order",
+      default: null,
+      index: true,
+    },
+
+    orderNumber: {
+      type: String,
+      default: "",
+      trim: true,
+      index: true,
+    },
+
+    orderColor: {
+      type: mongoose.Schema.Types.Mixed,
+      default: null,
+    },
+
+    productName: {
+      type: String,
+      default: "",
+      trim: true,
     },
 
     // Ownership status
@@ -86,6 +138,25 @@ const physicalCardSchema = new mongoose.Schema(
       enum: ["unclaimed", "claimed", "disabled"],
       default: "unclaimed",
       index: true,
+    },
+
+    // Dashboard internal operational status: is the card currently in printing or received
+    operationalStatus: {
+      type: String,
+      enum: ["in_printing", "received", "pending", ""],
+      default: "",
+      index: true,
+    },
+
+    isPrinting: {
+      type: Boolean,
+      default: false,
+      index: true,
+    },
+
+    printingStartedAt: {
+      type: Date,
+      default: null,
     },
 
     // Owner user reference (null until claimed)

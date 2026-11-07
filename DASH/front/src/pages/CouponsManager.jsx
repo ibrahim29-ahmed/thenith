@@ -10,7 +10,8 @@ function Modal({ title, onClose, children, wide }) {
           <h3 className="text-lg font-bold text-slate-800">{title}</h3>
           <button onClick={onClose} className="text-slate-400 hover:text-slate-600"><X className="w-5 h-5" /></button>
         </div>
-        <div className="p-6 overflow-y-auto flex-1">{children}</div>
+        <div className="p-6 overflow-y-auto flex-1"
+        >{children}</div>
       </div>
     </div>
   );
@@ -36,13 +37,14 @@ function ConfirmModal({ message, onConfirm, onCancel, loading }) {
 }
 
 function CouponForm({ initial, onSave, onCancel, saving, error }) {
-  const [form, setForm] = useState(initial || {
+  const [form, setForm] = useState(initial ? { ...initial, applyMode: initial.applyMode || "code" } : {
     code: "",
     discountType: "percentage",
-    discountValue: 10,
+    discountValue: "",
     monthlyDiscountValue: "",
     yearlyDiscountValue: "",
     appliesTo: "all",
+    applyMode: "code",
     maxUses: "", // empty means unlimited
     expiresAt: "",
     isActive: true,
@@ -51,17 +53,31 @@ function CouponForm({ initial, onSave, onCancel, saving, error }) {
   const handleSubmit = () => {
     const data = { ...form };
     data.code = data.code.toUpperCase().trim();
+    data.applyMode = form.applyMode || "code";
+
+    const numDiscountValue = data.discountValue === "" ? null : Number(data.discountValue);
+    const numMonthly = (data.monthlyDiscountValue === "" || data.monthlyDiscountValue === null) ? null : Number(data.monthlyDiscountValue);
+    const numYearly = (data.yearlyDiscountValue === "" || data.yearlyDiscountValue === null) ? null : Number(data.yearlyDiscountValue);
+
+    data.monthlyDiscountValue = numMonthly;
+    data.yearlyDiscountValue = numYearly;
+
+    // Set discountValue to what the user wrote
+    if (numDiscountValue !== null && !isNaN(numDiscountValue)) {
+      data.discountValue = numDiscountValue;
+    } else if (numMonthly !== null) {
+      data.discountValue = numMonthly;
+    } else if (numYearly !== null) {
+      data.discountValue = numYearly;
+    } else {
+      data.discountValue = 0;
+    }
+
     if (data.maxUses === "") data.maxUses = null;
     else data.maxUses = Number(data.maxUses);
-    
-    if (data.monthlyDiscountValue === "") data.monthlyDiscountValue = null;
-    else data.monthlyDiscountValue = Number(data.monthlyDiscountValue);
 
-    if (data.yearlyDiscountValue === "") data.yearlyDiscountValue = null;
-    else data.yearlyDiscountValue = Number(data.yearlyDiscountValue);
-    
     if (data.expiresAt === "") data.expiresAt = null;
-    
+
     onSave(data);
   };
 
@@ -72,8 +88,13 @@ function CouponForm({ initial, onSave, onCancel, saving, error }) {
   };
 
   useEffect(() => {
-    if (initial && initial.expiresAt) {
-      setForm(f => ({ ...f, expiresAt: formatDateForInput(initial.expiresAt) }));
+    if (initial) {
+      setForm(f => ({
+        ...f,
+        ...initial,
+        applyMode: initial.applyMode || "code",
+        expiresAt: initial.expiresAt ? formatDateForInput(initial.expiresAt) : ""
+      }));
     }
   }, [initial]);
 
@@ -82,7 +103,7 @@ function CouponForm({ initial, onSave, onCancel, saving, error }) {
       <div className="space-y-4">
         <div className="space-y-1.5">
           <label className="text-sm font-bold text-slate-700">كود الخصم (Promo Code)</label>
-          <input type="text" value={form.code} onChange={(e) => setForm({ ...form, code: e.target.value.toUpperCase() })} 
+          <input type="text" value={form.code} onChange={(e) => setForm({ ...form, code: e.target.value.toUpperCase() })}
             placeholder="مثال: BLACKFRIDAY50"
             className="w-full border border-slate-200 rounded-xl px-4 py-2 text-sm focus:ring-2 focus:ring-indigo-500 outline-none font-mono font-bold" />
         </div>
@@ -96,18 +117,24 @@ function CouponForm({ initial, onSave, onCancel, saving, error }) {
               <option value="fixed">مبلغ ثابت (ج.م)</option>
             </select>
           </div>
-          {form.appliesTo !== "subscriptions" && (
-            <div className="space-y-1.5">
-              <label className="text-sm font-bold text-slate-700">قيمة الخصم</label>
-              <div className="relative">
-                <input type="number" min="0" value={form.discountValue} onChange={(e) => setForm({ ...form, discountValue: Number(e.target.value) })}
-                  className="w-full border border-slate-200 rounded-xl ps-8 pe-4 py-2 text-sm focus:ring-2 focus:ring-indigo-500 outline-none" />
-                <div className="absolute start-3 top-2.5 text-slate-400">
-                  {form.discountType === "percentage" ? <Percent className="w-4 h-4" /> : <span className="text-xs font-bold font-sans">EGP</span>}
-                </div>
+          <div className="space-y-1.5">
+            <label className="text-sm font-bold text-slate-700">
+              {form.appliesTo === "subscriptions" ? "قيمة الخصم (العامة)" : "قيمة الخصم"}
+            </label>
+            <div className="relative">
+              <input
+                type="number"
+                min="0"
+                value={form.discountValue ?? ""}
+                onChange={(e) => setForm({ ...form, discountValue: e.target.value })}
+                className="w-full border border-slate-200 rounded-xl ps-8 pe-4 py-2 text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
+                placeholder={form.discountType === "percentage" ? "مثال: 20" : "مثال: 50"}
+              />
+              <div className="absolute start-3 top-2.5 text-slate-400">
+                {form.discountType === "percentage" ? <Percent className="w-4 h-4" /> : <span className="text-xs font-bold font-sans">EGP</span>}
               </div>
             </div>
-          )}
+          </div>
         </div>
 
         <div className="space-y-1.5">
@@ -118,6 +145,55 @@ function CouponForm({ initial, onSave, onCancel, saving, error }) {
             <option value="store">المتجر فقط (المنتجات)</option>
             <option value="subscriptions">الاشتراكات فقط (الباقات)</option>
           </select>
+        </div>
+
+        <div className="space-y-1.5">
+          <label className="text-sm font-bold text-slate-700">طريقة تطبيق الكوبون</label>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+            <label
+              className={`flex items-start gap-3 p-3.5 rounded-xl border cursor-pointer transition-all ${form.applyMode !== "auto"
+                  ? "border-indigo-600 bg-indigo-50/50 text-slate-900"
+                  : "border-slate-200 bg-white hover:bg-slate-50 text-slate-600"
+                }`}
+            >
+              <input
+                type="radio"
+                name="applyMode"
+                value="code"
+                checked={form.applyMode !== "auto"}
+                onChange={() => setForm({ ...form, applyMode: "code" })}
+                className="mt-1 accent-indigo-600"
+              />
+              <div>
+                <span className="block text-sm font-bold">تطبيق ككود فقط</span>
+                <span className="block text-xs text-slate-500 mt-0.5">
+                  يدخل العميل الكود في خانة "هل لديك كوبون خصم؟" لتفعيله
+                </span>
+              </div>
+            </label>
+
+            <label
+              className={`flex items-start gap-3 p-3.5 rounded-xl border cursor-pointer transition-all ${form.applyMode === "auto"
+                  ? "border-indigo-600 bg-indigo-50/50 text-slate-900"
+                  : "border-slate-200 bg-white hover:bg-slate-50 text-slate-600"
+                }`}
+            >
+              <input
+                type="radio"
+                name="applyMode"
+                value="auto"
+                checked={form.applyMode === "auto"}
+                onChange={() => setForm({ ...form, applyMode: "auto" })}
+                className="mt-1 accent-indigo-600"
+              />
+              <div>
+                <span className="block text-sm font-bold">تطبيق على الباقة مباشرة</span>
+                <span className="block text-xs text-slate-500 mt-0.5">
+                  يظهر السعر مخفضاً تلقائياً على الباقة دون الحاجة لكتابة كود
+                </span>
+              </div>
+            </label>
+          </div>
         </div>
 
         {form.appliesTo === "subscriptions" && (
@@ -187,7 +263,7 @@ function CouponForm({ initial, onSave, onCancel, saving, error }) {
 export default function CouponsManager() {
   const [coupons, setCoupons] = useState([]);
   const [loading, setLoading] = useState(true);
-  
+
   const [addModal, setAddModal] = useState(false);
   const [editModal, setEditModal] = useState(null);
   const [deleteConfirm, setDeleteConfirm] = useState(null);
@@ -197,7 +273,7 @@ export default function CouponsManager() {
   const load = useCallback(async () => {
     setLoading(true);
     try { setCoupons(await fetchCoupons()); }
-    catch (e) {  }
+    catch (e) { }
     finally { setLoading(false); }
   }, []);
 
@@ -220,7 +296,7 @@ export default function CouponsManager() {
   const handleDelete = async () => {
     setActionLoading(true);
     try { await deleteCoupon(deleteConfirm._id); setDeleteConfirm(null); load(); }
-    catch (e) {  }
+    catch (e) { }
     finally { setActionLoading(false); }
   };
 
@@ -240,7 +316,7 @@ export default function CouponsManager() {
       {loading ? (
         <div className="flex items-center justify-center py-24"><Loader2 className="w-8 h-8 animate-spin text-indigo-500" /></div>
       ) : coupons.length === 0 ? (
-         <div className="bg-white border border-slate-200 rounded-2xl p-16 flex flex-col items-center text-center gap-4 shadow-sm">
+        <div className="bg-white border border-slate-200 rounded-2xl p-16 flex flex-col items-center text-center gap-4 shadow-sm">
           <div className="w-20 h-20 bg-indigo-50 rounded-full flex items-center justify-center text-indigo-400">
             <Tag className="w-10 h-10" />
           </div>
@@ -259,6 +335,7 @@ export default function CouponsManager() {
                   <th className="py-3 px-5">الخصم</th>
                   <th className="py-3 px-5">الاستخدامات</th>
                   <th className="py-3 px-5">ينطبق على</th>
+                  <th className="py-3 px-5">طريقة التطبيق</th>
                   <th className="py-3 px-5">انتهاء الصلاحية</th>
                   <th className="py-3 px-5">الحالة</th>
                   <th className="py-3 px-5 text-center">إجراءات</th>
@@ -269,16 +346,60 @@ export default function CouponsManager() {
                   const isExpired = c.expiresAt && new Date(c.expiresAt) < new Date();
                   const isExhausted = c.maxUses !== null && c.usedCount >= c.maxUses;
                   const active = c.isActive && !isExpired && !isExhausted;
-                  
+
                   return (
                     <tr key={c._id} className="hover:bg-slate-50/50 transition-colors group">
                       <td className="py-4 px-5">
                         <span className="font-mono font-black text-slate-800 bg-slate-100 px-3 py-1.5 rounded-lg border border-slate-200">{c.code}</span>
                       </td>
                       <td className="py-4 px-5">
-                        <span className="font-black text-emerald-600">
-                          {c.discountType === "percentage" ? `${c.discountValue}%` : `${c.discountValue} ج.م`}
-                        </span>
+                        {(() => {
+                          const unit = c.discountType === "percentage" ? "%" : " ج.م";
+                          const hasMonthly = c.monthlyDiscountValue !== null && c.monthlyDiscountValue !== undefined && c.monthlyDiscountValue !== "";
+                          const hasYearly = c.yearlyDiscountValue !== null && c.yearlyDiscountValue !== undefined && c.yearlyDiscountValue !== "";
+
+                          if (c.appliesTo === "subscriptions") {
+                            if (hasMonthly && hasYearly) {
+                              if (Number(c.monthlyDiscountValue) === Number(c.yearlyDiscountValue)) {
+                                return (
+                                  <span className="font-black text-emerald-600">
+                                    {c.monthlyDiscountValue}{unit}
+                                  </span>
+                                );
+                              }
+                              return (
+                                <div className="flex flex-col text-xs font-bold space-y-0.5">
+                                  <span className="text-emerald-600">
+                                    شهري: {c.monthlyDiscountValue}{unit}
+                                  </span>
+                                  <span className="text-indigo-600">
+                                    سنوي: {c.yearlyDiscountValue}{unit}
+                                  </span>
+                                </div>
+                              );
+                            }
+                            if (hasMonthly) {
+                              return (
+                                <span className="font-black text-emerald-600 text-xs">
+                                  شهري: {c.monthlyDiscountValue}{unit}
+                                </span>
+                              );
+                            }
+                            if (hasYearly) {
+                              return (
+                                <span className="font-black text-indigo-600 text-xs">
+                                  سنوي: {c.yearlyDiscountValue}{unit}
+                                </span>
+                              );
+                            }
+                          }
+
+                          return (
+                            <span className="font-black text-emerald-600">
+                              {c.discountValue ?? 0}{unit}
+                            </span>
+                          );
+                        })()}
                       </td>
                       <td className="py-4 px-5">
                         <p className="font-bold text-slate-700">{c.usedCount} <span className="text-slate-400 font-normal">/ {c.maxUses === null ? "غير محدود" : c.maxUses}</span></p>
@@ -289,9 +410,20 @@ export default function CouponsManager() {
                         </span>
                       </td>
                       <td className="py-4 px-5">
+                        {c.applyMode === "auto" ? (
+                          <span className="text-xs font-bold text-amber-700 bg-amber-50 border border-amber-200 px-2.5 py-1 rounded-md inline-block">
+                            تلقائي على الباقة
+                          </span>
+                        ) : (
+                          <span className="text-xs font-bold text-indigo-700 bg-indigo-50 border border-indigo-200 px-2.5 py-1 rounded-md inline-block">
+                            كود يدوي
+                          </span>
+                        )}
+                      </td>
+                      <td className="py-4 px-5">
                         {c.expiresAt ? (
                           <div className={`flex items-center gap-1.5 text-sm font-bold ${isExpired ? "text-rose-500" : "text-slate-700"}`}>
-                            <Calendar className="w-4 h-4" /> {new Date(c.expiresAt).toLocaleDateString("ar-EG")}
+                            <Calendar className="w-4 h-4" /> {new Date(c.expiresAt).toLocaleDateString("ar-EG-u-nu-latn")}
                           </div>
                         ) : (
                           <span className="text-sm text-slate-400 font-medium">—</span>

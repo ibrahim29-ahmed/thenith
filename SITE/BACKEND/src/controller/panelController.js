@@ -152,7 +152,12 @@ const createCard = asyncHandler(async (request, response) => {
     session.endSession();
   }
   await card.populate("userId", "username publicId");
-  invalidateProfileCacheForUser(request.user._id, request.user.publicId, request.user.username);
+  invalidateProfileCacheForUser(
+    request.user._id,
+    request.user.publicId,
+    request.user.username,
+    updatedCard?.publicId,
+  );
   response.status(201).json({
     card: buildDashboardCardDTO(
       publicCard(card),
@@ -277,7 +282,12 @@ const updateCard = asyncHandler(async (request, response) => {
   ).populate("userId", "username publicId");
   if (!updatedCard) throw new HttpError(404, "Card not found");
 
-  invalidateProfileCacheForUser(request.user._id, request.user.publicId, request.user.username);
+  invalidateProfileCacheForUser(
+    request.user._id,
+    request.user.publicId,
+    request.user.username,
+    updatedCard?.publicId,
+  );
 
   response.json({
     card: buildDashboardCardDTO(
@@ -313,7 +323,12 @@ const reorderLinks = asyncHandler(async (request, response) => {
     { new: true, runValidators: true },
   ).populate("userId", "username publicId");
   if (!updatedCard) throw new HttpError(404, "Card not found");
-  invalidateProfileCacheForUser(request.user._id, request.user.publicId, request.user.username);
+  invalidateProfileCacheForUser(
+    request.user._id,
+    request.user.publicId,
+    request.user.username,
+    updatedCard?.publicId,
+  );
   response.json({
     card: buildDashboardCardDTO(
       publicCard(updatedCard),
@@ -347,7 +362,12 @@ const deleteCard = asyncHandler(async (request, response) => {
       await request.user.save();
     }
   }
-  invalidateProfileCacheForUser(request.user._id, request.user.publicId, request.user.username);
+  invalidateProfileCacheForUser(
+    request.user._id,
+    request.user.publicId,
+    request.user.username,
+    updatedCard?.publicId,
+  );
   response.status(204).send();
 });
 

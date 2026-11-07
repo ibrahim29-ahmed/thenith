@@ -154,8 +154,12 @@ export default function HomePage({
         cancelButtonText: language === "ar" ? "إلغاء" : "Cancel",
         confirmButtonColor: "#4f46e5",
       }).then((result) => {
-        if (result.isConfirmed && onUpgrade) {
-          onUpgrade();
+        if (result.isConfirmed) {
+          if (onUpgrade) {
+            onUpgrade();
+          } else {
+            window.location.href = "/panel/subscriptions";
+          }
         }
       });
     });
@@ -512,6 +516,7 @@ export default function HomePage({
 
   return (
     <section className="space-y-4 sm:space-y-6">
+      <PendingPaymentAlert />
       <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
         <div>
           <h1 className="text-xl sm:text-2xl font-black text-slate-800 dark:text-white">

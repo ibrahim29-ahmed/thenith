@@ -3,10 +3,6 @@ import { createRoot } from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
 import App from "./App.jsx";
 import "./styles/shared.css";
-import { initClarity } from "./services/clarity.js";
-
-// Initialize Microsoft Clarity Analytics
-initClarity();
 
 // Cleanup stale Service Workers during development to prevent reload loops
 if (import.meta.env.DEV && "serviceWorker" in navigator) {

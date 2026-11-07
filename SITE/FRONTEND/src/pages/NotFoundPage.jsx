@@ -3,6 +3,7 @@ import { Link, useLocation } from "react-router-dom";
 import { ArrowLeft, Home, ShieldAlert } from "lucide-react";
 import { useGlobalLanguage } from "../context/GlobalLanguageContext.jsx";
 import { getNotFoundSeoData, applyPageSeo } from "../utils/seo.js";
+import MainFooter from "../components/MainFooter.jsx";
 
 const notFoundConfigs = {
   profileNotFound: {
@@ -70,6 +71,7 @@ export default function NotFoundPage({ code = "routeNotFound" }) {
           </div>
         </div>
       </main>
+      <MainFooter />
     </div>
   );
 }

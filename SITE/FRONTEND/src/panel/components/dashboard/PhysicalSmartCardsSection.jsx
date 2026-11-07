@@ -25,6 +25,88 @@ import cardRoutes from "../../../api/routes/cards.js";
 import { useGlobalLanguage } from "../../../context/GlobalLanguageContext.jsx";
 import { useAuth } from "../../../context/AuthContext.jsx";
 
+function getCardAppearance(card) {
+  const colorStr = (
+    card?.orderColor?.hex ||
+    card?.orderColor?.value ||
+    card?.orderColor ||
+    card?.color ||
+    ""
+  ).toString().toLowerCase().trim();
+
+  const cardType = (card?.cardType || "").toLowerCase();
+
+  // White / Pearl
+  if (colorStr === "#ffffff" || colorStr === "white" || colorStr.includes("white") || colorStr.includes("أبيض")) {
+    return {
+      bg: "bg-gradient-to-br from-white via-slate-50 to-slate-200 text-slate-900 border-slate-300 shadow-xl",
+      logoClass: "text-slate-900",
+      nfcClass: "text-slate-600",
+      subText: "text-slate-600 font-semibold",
+      badgeClass: "bg-slate-200/90 text-slate-800",
+      isLight: true,
+    };
+  }
+
+  // Gold / Brass / Metal Gold
+  if (colorStr === "gold" || colorStr.includes("gold") || colorStr.includes("ذهب") || colorStr === "#ffea00" || colorStr === "#ffd700") {
+    return {
+      bg: "bg-gradient-to-br from-[#2d2210] via-[#3d2f16] to-[#1a1408] text-amber-100 border-amber-600/40 shadow-xl shadow-amber-950/20",
+      logoClass: "text-amber-300 drop-shadow-[0_2px_8px_rgba(245,158,11,0.3)]",
+      nfcClass: "text-amber-400",
+      subText: "text-amber-200/70",
+      badgeClass: "bg-amber-500/20 text-amber-300 border border-amber-500/30",
+      isLight: false,
+    };
+  }
+
+  // Signature Blue / Royal
+  if (colorStr === "blue" || colorStr.includes("blue") || colorStr.includes("أزرق") || colorStr === "#0033ff" || colorStr === "thenith_signature") {
+    return {
+      bg: "bg-gradient-to-br from-[#03071e] via-[#04113b] to-[#01040a] text-white border-blue-500/40 shadow-xl shadow-blue-950/30",
+      logoClass: "text-white drop-shadow-[0_0_12px_rgba(59,130,246,0.5)]",
+      nfcClass: "text-blue-400",
+      subText: "text-blue-200/70",
+      badgeClass: "bg-blue-500/20 text-blue-300 border border-blue-500/30",
+      isLight: false,
+    };
+  }
+
+  // Bamboo / Wood
+  if (cardType === "bamboo" || colorStr.includes("wood") || colorStr.includes("خشب") || colorStr.includes("bamboo")) {
+    return {
+      bg: "bg-gradient-to-br from-[#3b2a1a] via-[#4a3522] to-[#2b1e12] text-amber-50 border-amber-800/50 shadow-xl shadow-amber-950/20",
+      logoClass: "text-amber-200 drop-shadow-sm",
+      nfcClass: "text-amber-300",
+      subText: "text-amber-200/70",
+      badgeClass: "bg-amber-600/20 text-amber-200 border border-amber-600/30",
+      isLight: false,
+    };
+  }
+
+  // Metal / Titanium / Silver
+  if (cardType === "metal" || colorStr === "silver" || colorStr.includes("silver") || colorStr.includes("فض")) {
+    return {
+      bg: "bg-gradient-to-br from-[#2a2c33] via-[#393c45] to-[#1c1d22] text-white border-slate-500/40 shadow-xl shadow-slate-950/30",
+      logoClass: "text-white drop-shadow-[0_2px_8px_rgba(255,255,255,0.2)]",
+      nfcClass: "text-slate-300",
+      subText: "text-slate-300/80",
+      badgeClass: "bg-white/10 text-slate-300 border border-white/20",
+      isLight: false,
+    };
+  }
+
+  // Default: Luxury Matte Obsidian Black
+  return {
+    bg: "bg-gradient-to-br from-[#16171b] via-[#101114] to-[#07080a] text-white border-slate-800/90 shadow-2xl shadow-slate-950/40",
+    logoClass: "text-white tracking-widest drop-shadow-sm",
+    nfcClass: "text-slate-400",
+    subText: "text-slate-400",
+    badgeClass: "bg-white/10 text-slate-300 border border-white/15",
+    isLight: false,
+  };
+}
+
 export default function PhysicalSmartCardsSection({ profiles = [], activeCardId }) {
   const { language } = useGlobalLanguage();
   const { user } = useAuth();
@@ -39,9 +121,9 @@ export default function PhysicalSmartCardsSection({ profiles = [], activeCardId 
   const [unlinkingCardId, setUnlinkingCardId] = useState(null);
 
   // Load user's physical cards
-  const loadCards = async () => {
+  const loadCards = async (isBackground = false) => {
     try {
-      setLoading(true);
+      if (!isBackground) setLoading(true);
       const res = await cardRoutes.listMyClaimedPhysicalCards();
       if (res?.success) {
         setCards(res.cards || []);
@@ -49,12 +131,21 @@ export default function PhysicalSmartCardsSection({ profiles = [], activeCardId 
     } catch (err) {
       // Ignore load error
     } finally {
-      setLoading(false);
+      if (!isBackground) setLoading(false);
     }
   };
 
   useEffect(() => {
-    loadCards();
+    loadCards(false);
+
+    const onSync = () => loadCards(true);
+    window.addEventListener("focus", onSync);
+    window.addEventListener("thenith_realtime_sync", onSync);
+
+    return () => {
+      window.removeEventListener("focus", onSync);
+      window.removeEventListener("thenith_realtime_sync", onSync);
+    };
   }, []);
 
   const handleUnlink = async (cardId) => {
@@ -125,11 +216,16 @@ export default function PhysicalSmartCardsSection({ profiles = [], activeCardId 
 
       {/* ── CARDS LIST / EMPTY STATE ────────────────────────────────────────── */}
       {loading ? (
-        <div className="p-12 flex flex-col items-center justify-center text-slate-400 gap-3">
-          <Loader2 className="w-7 h-7 animate-spin text-indigo-600" />
-          <p className="text-xs font-medium">
-            {isAr ? "جاري تحميل كروتك الذكية..." : "Loading your smart cards..."}
-          </p>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+          {[...Array(2)].map((_, i) => (
+            <div key={i} className="space-y-3 max-w-sm sm:max-w-md w-full mx-auto">
+              <div className="aspect-[1.586/1] w-full rounded-2xl sm:rounded-[24px] bg-slate-200 dark:bg-slate-800 animate-pulse border border-slate-300 dark:border-slate-700/60" />
+              <div className="flex justify-between px-1">
+                <div className="h-4 w-28 bg-slate-200 dark:bg-slate-800 rounded animate-pulse" />
+                <div className="h-4 w-16 bg-slate-200 dark:bg-slate-800 rounded animate-pulse" />
+              </div>
+            </div>
+          ))}
         </div>
       ) : cards.length === 0 ? (
         /* Empty State */
@@ -157,125 +253,101 @@ export default function PhysicalSmartCardsSection({ profiles = [], activeCardId 
         </div>
       ) : (
         /* Cards Grid */
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
           {cards.map((card) => {
-            const isEditing = reassigningCardId === card._id;
             const linkedProfile = card.profileId;
+            const appearance = getCardAppearance(card);
+            const cardHolderName = linkedProfile?.name || user?.name || (isAr ? "كارت شخصي ذكي" : "Smart Card");
+            const cardHolderTitle = linkedProfile?.personal?.title || linkedProfile?.personal?.company || (card.productName || "");
+            const targetLink = card.targetUrl || (user?.publicId ? `/p/${user.publicId}` : "");
 
             return (
               <div
                 key={card._id}
-                className="group relative rounded-3xl bg-gradient-to-b from-slate-900 to-slate-950 text-white p-6 border border-slate-800 shadow-xl overflow-hidden flex flex-col justify-between transition-all hover:border-indigo-500/50 hover:shadow-indigo-500/5"
+                className="flex flex-col gap-3 group max-w-sm sm:max-w-md w-full mx-auto"
               >
-                {/* Decorative Chip & Hologram */}
-                <div className="flex items-center justify-between mb-6">
-                  {/* EMV Smart Chip Visual */}
-                  <div className="flex items-center gap-2.5">
-                    <div className="w-10 h-7 rounded-lg bg-gradient-to-tr from-amber-400 via-yellow-200 to-amber-500 border border-yellow-600/40 p-1 flex flex-col justify-between shadow-sm">
-                      <div className="h-0.5 bg-yellow-700/40 rounded-full" />
-                      <div className="h-0.5 bg-yellow-700/40 rounded-full" />
-                      <div className="h-0.5 bg-yellow-700/40 rounded-full" />
-                    </div>
-                    <Radio className="w-4 h-4 text-slate-400 group-hover:text-indigo-400 transition-colors" />
-                  </div>
+                {/* ── THE PHYSICAL CARD (Realistic Aspect Ratio 1.586 : 1) ── */}
+                <div
+                  className={`relative aspect-[1.586/1] w-full rounded-2xl sm:rounded-[24px] p-5 sm:p-6 border overflow-hidden flex flex-col justify-between select-none transition-all duration-300 hover:scale-[1.01] ${appearance.bg}`}
+                >
+                  {/* Subtle Surface Texture & Light Sheen Effect */}
+                  <div className="absolute inset-0 bg-gradient-to-tr from-white/[0.04] to-transparent pointer-events-none" />
+                  <div className="absolute -top-16 -end-16 w-44 h-44 bg-white/[0.03] rounded-full blur-2xl pointer-events-none" />
 
-                  {/* Actions & Badge */}
-                  <div className="flex items-center gap-2">
-                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                      {isAr ? "نشط ومربوط" : "Active & Linked"}
-                    </span>
-
-                    <button
-                      type="button"
-                      disabled={unlinkingCardId === card._id}
-                      onClick={() => handleUnlink(card._id)}
-                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/30 transition-all cursor-pointer disabled:opacity-50"
-                      title={isAr ? "إلغاء ربط الكارت" : "Unlink Card"}
-                    >
-                      {unlinkingCardId === card._id ? (
-                        <Loader2 className="w-3 h-3 animate-spin" />
-                      ) : (
-                        <Unlink className="w-3 h-3" />
-                      )}
-                      <span>{isAr ? "إلغاء الربط" : "Unlink"}</span>
-                    </button>
-                  </div>
-                </div>
-
-                {/* Card ID & Public ID */}
-                <div className="space-y-1 mb-6">
-                  <div className="flex items-center justify-between">
-                    <span className="text-[10px] uppercase tracking-wider text-slate-400 font-sans">
-                      {isAr ? "المعرّف الداخلي للكارت:" : "Internal Card ID:"}
-                    </span>
-                    {card.publicId && (
-                      <span className="text-[10px] font-mono font-bold text-indigo-400 bg-indigo-500/10 px-2 py-0.5 rounded-md border border-indigo-500/20">
-                        ID: {card.publicId}
+                  {/* Top Bar: Brand Logo + Contactless NFC Waves + Active Dot */}
+                  <div className="relative z-10 flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className={`text-sm sm:text-base font-black tracking-widest font-mono ${appearance.logoClass}`}>
+                        THENITH
                       </span>
-                    )}
+                      <span className={`text-[8px] uppercase tracking-wider px-1.5 py-0.5 rounded-md font-bold ${appearance.badgeClass}`}>
+                        SMART
+                      </span>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      {/* Contactless Wave Icon */}
+                      <Radio className={`w-4 h-4 ${appearance.nfcClass}`} />
+
+                      {/* Active Badge */}
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                        <span>{isAr ? "مرتبط" : "Linked"}</span>
+                      </span>
+                    </div>
                   </div>
-                  <div className="text-xl font-mono font-black tracking-widest text-white drop-shadow-xs flex items-center gap-2">
-                    <span>{card.cardId}</span>
-                    <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0" />
-                  </div>
-                  <div className="flex items-center gap-3 text-[11px] text-slate-400 pt-1 font-sans">
-                    <span>{card.cardType || "Standard"}</span>
-                    <span>•</span>
-                    <span className="capitalize">{card.color || "Black"}</span>
-                    {card.claimedAt && (
-                      <>
-                        <span>•</span>
-                        <span>{new Date(card.claimedAt).toLocaleDateString(isAr ? "ar-EG" : "en-US")}</span>
-                      </>
+
+                  {/* Center Empty Luxurious Space */}
+                  <div className="flex-1" />
+
+                  {/* Bottom Bar: Owner Name & Title */}
+                  <div className="relative z-10 flex items-end justify-between gap-3 pt-2">
+                    <div className="min-w-0 flex-1 space-y-0.5">
+                      <p className="text-sm sm:text-base font-black truncate tracking-wide">
+                        {cardHolderName}
+                      </p>
+                      <p className={`text-[11px] truncate font-medium ${appearance.subText}`}>
+                        {cardHolderTitle || (isAr ? "كارت ذكي متصل" : "Connected Smart Card")}
+                      </p>
+                    </div>
+
+                    {card.publicId && (
+                      <div className="text-end shrink-0">
+                        <span className={`font-mono text-[10px] font-bold opacity-60 ${appearance.subText}`} dir="ltr">
+                          #{card.publicId}
+                        </span>
+                      </div>
                     )}
                   </div>
                 </div>
 
-                {/* Direct Profile Info */}
-                <div className="pt-4 border-t border-slate-800/80 space-y-2">
-                  <div className="flex items-center justify-between">
-                    <span className="text-[11px] font-bold text-slate-300">
-                      {isAr ? "رابط البروفايل المباشر:" : "Direct Profile Link:"}
-                    </span>
-                    <span className="text-[10px] px-2 py-0.5 rounded-md bg-indigo-500/10 text-indigo-300 border border-indigo-500/20 font-mono font-bold">
-                      publicId
-                    </span>
-                  </div>
-
-                  <div className="flex items-center justify-between p-3 rounded-2xl bg-slate-950/60 border border-slate-800/60">
-                    <div className="flex items-center gap-3 min-w-0">
-                      {user?.avatar || linkedProfile?.personal?.avatar ? (
-                        <img
-                          src={user?.avatar || linkedProfile?.personal?.avatar}
-                          alt=""
-                          className="w-8 h-8 rounded-full object-cover border border-slate-700 shrink-0"
-                        />
-                      ) : (
-                        <div className="w-8 h-8 rounded-full bg-indigo-600/30 text-indigo-300 font-bold flex items-center justify-center text-xs shrink-0">
-                          {user?.name?.[0] || linkedProfile?.name?.[0] || "P"}
-                        </div>
-                      )}
-                      <div className="min-w-0">
-                        <p className="text-xs font-bold text-white truncate">
-                          {user?.name || linkedProfile?.name || "My Profile"}
-                        </p>
-                        <p className="text-[11px] font-mono font-bold text-indigo-400 truncate" dir="ltr">
-                          {card.targetUrl || `/p/${user?.publicId}`}
-                        </p>
-                      </div>
-                    </div>
-
+                {/* ── CLEAN ACTION BAR BELOW CARD ── */}
+                <div className="flex items-center justify-between gap-2 px-1 text-xs">
+                  {targetLink && (
                     <a
-                      href={card.targetUrl || `/p/${user?.publicId}`}
+                      href={targetLink}
                       target="_blank"
                       rel="noreferrer"
-                      className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition-colors shrink-0"
-                      title={isAr ? "معاينة رابط البروفايل" : "Preview profile"}
+                      className="inline-flex items-center gap-1.5 font-bold text-slate-600 hover:text-indigo-600 dark:text-slate-400 dark:hover:text-white transition-colors"
                     >
+                      <span>{isAr ? "معاينة صفحتك الذكية" : "Preview Linked Profile"}</span>
                       <ExternalLink className="w-3.5 h-3.5" />
                     </a>
-                  </div>
+                  )}
+
+                  <button
+                    type="button"
+                    disabled={unlinkingCardId === card._id}
+                    onClick={() => handleUnlink(card._id)}
+                    className="inline-flex items-center gap-1 font-bold text-slate-400 hover:text-rose-500 transition-colors cursor-pointer disabled:opacity-50 ms-auto"
+                  >
+                    {unlinkingCardId === card._id ? (
+                      <Loader2 className="w-3.5 h-3.5 animate-spin text-rose-500" />
+                    ) : (
+                      <Unlink className="w-3.5 h-3.5" />
+                    )}
+                    <span>{isAr ? "إلغاء الربط" : "Unlink"}</span>
+                  </button>
                 </div>
               </div>
             );

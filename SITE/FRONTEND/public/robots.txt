@@ -1,59 +1,11 @@
-# robots.txt for https://thenith.com
-# Thenith — Smart Digital Identity & NFC Cards Platform
-
-# Search Engine Crawlers & AI Search Bots
-User-agent: Googlebot
-User-agent: Googlebot-Image
-User-agent: Googlebot-Mobile
-User-agent: Bingbot
-User-agent: Applebot
-User-agent: OAI-SearchBot
-User-agent: PerplexityBot
-Allow: /
-Allow: /p/
-Allow: /products
-Allow: /products/
-Allow: /pricing
-Allow: /suggest
-Allow: /assets/
-Allow: /sounds/
-Allow: /icon*.png
-Allow: /favicon.svg
-Allow: /manifest.webmanifest
-Disallow: /u/
-Disallow: /panel/
-Disallow: /panel
-Disallow: /login
-Disallow: /signup
-Disallow: /cart
-Disallow: /checkout
-Disallow: /payment
-Disallow: /payment/
-Disallow: /api/
-
-# General Web Crawlers
+# Standard robots.txt
 User-agent: *
 Allow: /
-Allow: /p/
-Allow: /products
-Allow: /products/
-Allow: /pricing
-Allow: /suggest
-Allow: /assets/
-Allow: /sounds/
-Allow: /icon*.png
-Allow: /favicon.svg
-Allow: /manifest.webmanifest
 Disallow: /u/
 Disallow: /panel/
-Disallow: /panel
 Disallow: /login
 Disallow: /signup
 Disallow: /cart
-Disallow: /checkout
-Disallow: /payment
 Disallow: /payment/
-Disallow: /api/
 
-# XML Sitemap
 Sitemap: https://thenith.com/sitemap.xml

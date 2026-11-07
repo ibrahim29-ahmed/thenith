@@ -18,6 +18,7 @@ import Order from "../models/Order.js";
 import PaymentTransaction from "../models/PaymentTransaction.js";
 import AuditLog from "../models/AuditLog.js";
 import OrderDraft from "../models/OrderDraft.js";
+import AdminUser from "../models/AdminUser.js";
 import _socketService3436 from "../services/socketService.js";
 const { getIO, getRoomTarget } = _socketService3436;
 import {
@@ -43,7 +44,7 @@ const safeCompare = (a, b) => {
 const adminLogin = async (req, res) => {
   const { username, password } = req.body || {};
   if (!username || !password || typeof username !== "string" || typeof password !== "string") {
-    return res.status(400).json({ error: "Username and password are required" });
+    return res.status(400).json({ error: "اسم المستخدم وكلمة المرور مطلوبان" });
   }
 
   const cleanUser = username.trim().toLowerCase();
@@ -55,7 +56,7 @@ const adminLogin = async (req, res) => {
   if (isUserValid && isPassValid) {
     const finalUsername = env.ADMIN_USERNAME;
     const token = jwt.sign(
-      { role: "superadmin", username: finalUsername },
+      { role: "superadmin", username: finalUsername, permissions: ["*"] },
       env.ADMIN_JWT_SECRET,
       { expiresIn: "7d" },
     );
@@ -64,11 +65,66 @@ const adminLogin = async (req, res) => {
       ok: true,
       success: true,
       token,
-      user: { id: "superadmin", username: finalUsername, role: "superadmin" },
+      user: {
+        id: "superadmin",
+        username: finalUsername,
+        name: "المدير العام",
+        role: "superadmin",
+        title: "المالك والمسؤول الرئيسي",
+        permissions: ["*"],
+      },
     });
   }
 
-  return res.status(401).json({ error: "Invalid admin credentials" });
+  // Check AdminUser in database
+  try {
+    const adminDoc = await AdminUser.findOne({
+      $or: [{ username: cleanUser }, { email: cleanUser }],
+    }).select("+password");
+
+    if (adminDoc) {
+      if (adminDoc.isActive === false) {
+        return res.status(403).json({ error: "تم تعطيل هذا الحساب، يرجى مراجعة المسؤول الرئيسي" });
+      }
+
+      const isMatch = await adminDoc.comparePassword(password);
+      if (isMatch) {
+        adminDoc.lastLoginAt = new Date();
+        await adminDoc.save().catch(() => {});
+
+        const token = jwt.sign(
+          {
+            id: adminDoc._id.toString(),
+            username: adminDoc.username,
+            name: adminDoc.name,
+            role: adminDoc.role || "admin",
+            title: adminDoc.title,
+            permissions: adminDoc.permissions || [],
+          },
+          env.ADMIN_JWT_SECRET,
+          { expiresIn: "7d" }
+        );
+
+        return res.json({
+          ok: true,
+          success: true,
+          token,
+          user: {
+            id: adminDoc._id.toString(),
+            username: adminDoc.username,
+            name: adminDoc.name,
+            role: adminDoc.role || "admin",
+            title: adminDoc.title,
+            permissions: adminDoc.permissions || [],
+          },
+        });
+      }
+    }
+  } catch (err) {
+    console.error("Admin login db error:", err);
+  }
+
+  return res.status(401).json({ error: "اسم المستخدم أو كلمة المرور غير صحيحة" });
 };
 
 // ── Subscriptions ─────────────────────────────────────────────────────────────
@@ -212,7 +268,8 @@ const getSubscriptionEvents = async (req, res, next) => {
     // Find user IDs matching search if search provided
     let matchedUserIds = null;
     if (search) {
-      const searchRegex = new RegExp(search, "i");
+      const escapedSearch = search.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const searchRegex = new RegExp(escapedSearch, "i");
       const users = await User.find({
         $or: [
           { name: searchRegex },
@@ -742,14 +799,24 @@ const getUsers = async (req, res, next) => {
 
     const result = await Promise.all(
       users.map(async (user) => {
-        const sub = await Subscription.findOne({ userId: user._id, status: { $in: ["active", "trialing"] } })
+        const activeSubs = await Subscription.find({
+          userId: user._id,
+          status: { $in: ["active", "trialing"] },
+          $or: [{ expiresAt: null }, { expiresAt: { $gt: new Date() } }],
+        })
           .sort({ createdAt: -1 })
           .populate("planId")
           .lean();
-        const plan =
-          sub?.planId && typeof sub.planId === "object"
-            ? sub.planId
-            : plans.find((p) => p.key === "free");
+
+        const proSub = activeSubs.find((s) => s.planId?.key === "pro");
+        const plusSub = activeSubs.find((s) => s.planId?.key === "payment_plus");
+        const hasPaymentPlus = Boolean(
+          user.paymentPlusActive ||
+          plusSub ||
+          (proSub && proSub.planId?.features?.unifiedPaymentHub)
+        );
+
+        const plan = proSub?.planId || plans.find((p) => p.key === "free");
         return {
           id: user._id,
           name: user.name || "بدون اسم",
@@ -762,7 +829,8 @@ const getUsers = async (req, res, next) => {
           planId: plan?._id || null,
           planKey: plan?.key || "free",
           planName: plan?.name || "Free",
-          subscriptionId: sub?._id || null,
+          hasPaymentPlus,
+          subscriptionId: proSub?._id || plusSub?._id || null,
           isActive: user.isActive !== false,
           isEmailVerified: user.isEmailVerified,
           createdAt: user.createdAt,
@@ -857,7 +925,13 @@ const toggleUserBan = async (req, res, next) => {
 
 const changeUserPlan = async (req, res, next) => {
   try {
-    const { planKey, billingPeriod = "monthly", customDays, customHours, reason } = req.body;
+    const { planKey, billingPeriod = "monthly", customDays, customHours, reason, paymentPlus } = req.body;
+
+    // Handle paymentPlus toggle if provided
+    if (typeof paymentPlus === "boolean") {
+      await User.findByIdAndUpdate(req.params.id, { paymentPlusActive: paymentPlus });
+    }
+
     const plan = await Plan.findOne({ key: planKey });
     if (!plan) return res.status(404).json({ error: "Plan not found" });
 
@@ -945,6 +1019,18 @@ const changeUserPlan = async (req, res, next) => {
     }
 
     res.json({ success: true, planKey });
+  } catch (error) {
+    next(error);
+  }
+};
+
+const toggleUserPaymentPlus = async (req, res, next) => {
+  try {
+    const user = await User.findById(req.params.id);
+    if (!user) return res.status(404).json({ error: "User not found" });
+    user.paymentPlusActive = !user.paymentPlusActive;
+    await user.save();
+    res.json({ success: true, id: user._id, hasPaymentPlus: user.paymentPlusActive });
   } catch (error) {
     next(error);
   }
@@ -2060,10 +2146,14 @@ const sendCustomerServiceMessage = async (req, res, next) => {
     if (!customerService)
       return res.status(404).json({ error: "CustomerService not found" });
 
+    const senderName = req.admin?.name || req.admin?.username || "فريق الدعم";
+    const senderId = req.admin?.username || req.admin?.id || "admin";
+
     const message = await ChatMessage.create({
       customerService: customerService._id,
       senderModel: "Admin",
-      senderId: req.admin ? req.admin.username : "admin",
+      senderId,
+      senderName,
       content,
     });
 
@@ -2353,4 +2443,5 @@ export default {
   getFilteredUsers,
   getSubscriptionEvents,
   cancelUserSubscriptionByAdmin,
+  toggleUserPaymentPlus,
 };

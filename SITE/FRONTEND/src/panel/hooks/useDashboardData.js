@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import io from "socket.io-client";
 import {
   normalizeCard,
   normalizeDashboardData,
@@ -19,15 +20,35 @@ import { readAuthToken } from "../../api/client.js";
 
 export function getInboxItems(card) {
   if (!card) return [];
-  return card.actionType === "calendar"
-    ? card.appointments || []
-    : card.requests || [];
+  const appts = (card.appointments || []).map((a) => ({
+    ...a,
+    type: "appointment",
+  }));
+  const msgs = (card.requests || []).map((r) => ({
+    ...r,
+    type: "message",
+  }));
+  if (card.actionType === "calendar") {
+    return [...appts, ...msgs];
+  }
+  return [...msgs, ...appts];
 }
 
 export function getInboxLabel(card, t) {
   return card?.actionType === "calendar"
-    ? t("appointments")
-    : t("workRequests");
+    ? (t("appointments") || "المواعيد")
+    : (t("messages") || "الرسائل");
+}
+
+export function broadcastProfileUpdate() {
+  try {
+    const ch = new BroadcastChannel("thenith_profile_sync");
+    ch.postMessage({ type: "PROFILE_UPDATED", timestamp: Date.now() });
+    ch.close();
+  } catch (e) {}
+  try {
+    localStorage.setItem("thenith_profile_sync_ts", Date.now().toString());
+  } catch (e) {}
 }
 
 export function normalizeUrl(value) {
@@ -99,6 +120,7 @@ export function useDashboardData() {
             cards: result.cards,
             owner: { ...current.owner, activeCardId: result.activeCardId },
           }));
+          broadcastProfileUpdate();
         }
       } catch (error) {
       } finally {
@@ -141,8 +163,9 @@ export function useDashboardData() {
     };
   }, []);
 
-  // Real-time live SSE connection & conservative periodic fallback for live updates
+  // Real-time live updates: Socket.io + SSE + conservative periodic fallback
   useEffect(() => {
+    let socket = null;
     let eventSource = null;
 
     const poll = async () => {
@@ -197,29 +220,125 @@ export function useDashboardData() {
       }
     };
 
-    // Connect to Server-Sent Events (SSE) for instant live updates (under 50ms)
+    const handleIncomingRealtime = (data) => {
+      // 1. Instant local injection if payload & cardId provided
+      if (data?.cardId && data?.payload) {
+        setDashboardData((prev) => {
+          const updatedCards = prev.cards.map((c) => {
+            if (c.id === data.cardId || c._id === data.cardId) {
+              if (data.type === "new_appointment") {
+                const exists = (c.appointments || []).some(
+                  (a) => a.id === data.payload.id || a._id === data.payload.id,
+                );
+                if (exists) return c;
+                return {
+                  ...c,
+                  appointments: [data.payload, ...(c.appointments || [])],
+                };
+              } else {
+                const exists = (c.requests || []).some(
+                  (r) => r.id === data.payload.id || r._id === data.payload.id,
+                );
+                if (exists) return c;
+                return {
+                  ...c,
+                  requests: [data.payload, ...(c.requests || [])],
+                };
+              }
+            }
+            return c;
+          });
+          return {
+            ...prev,
+            cards: updatedCards,
+          };
+        });
+      }
+      // 2. Poll full fresh data from backend
+      poll();
+      try {
+        window.dispatchEvent(new CustomEvent("thenith_realtime_sync", { detail: data }));
+      } catch (e) {}
+    };
+
     const token = readAuthToken();
     if (token) {
+      // 1. Socket.io connection for ultra-low latency (<20ms)
+      try {
+        const socketUrl =
+          API_BASE_URL === "/api"
+            ? undefined
+            : API_BASE_URL.replace(/\/api\/?$/, "");
+
+        socket = io(socketUrl, {
+          path: "/socket.io",
+          withCredentials: true,
+          autoConnect: true,
+          auth: { token },
+        });
+
+        socket.on("connect", () => {
+          socket.emit("joinUserRoom");
+        });
+
+        socket.on("dashboard_update", handleIncomingRealtime);
+        socket.on("subscription_update", handleIncomingRealtime);
+        socket.on("user_update", handleIncomingRealtime);
+        socket.on("card_update", handleIncomingRealtime);
+        socket.on("referral_update", handleIncomingRealtime);
+        socket.on("order_update", handleIncomingRealtime);
+        socket.on("system_settings_update", handleIncomingRealtime);
+        socket.on("plans_update", handleIncomingRealtime);
+        socket.on("new_request", handleIncomingRealtime);
+        socket.on("new_message", handleIncomingRealtime);
+        socket.on("new_appointment", handleIncomingRealtime);
+        socket.on("notification", handleIncomingRealtime);
+      } catch (err) {}
+
+      // 2. Server-Sent Events (SSE) connection
       try {
         const sseUrl = `${API_BASE_URL}/dashboard/stream?token=${encodeURIComponent(token)}`;
         eventSource = new EventSource(sseUrl, { withCredentials: true });
 
         eventSource.onmessage = (event) => {
           try {
-            // Instantly poll fresh data when any visit, click, appointment, or request arrives
+            if (event.data) {
+              const parsed = JSON.parse(event.data);
+              handleIncomingRealtime(parsed);
+            } else {
+              poll();
+            }
+          } catch (err) {
             poll();
-          } catch (err) {}
+          }
         };
 
         eventSource.onerror = () => {
           // SSE connection dropped, browser will retry automatically
         };
-      } catch (err) {
-        // SSE not supported or blocked
-      }
+      } catch (err) {}
     }
 
+    // 3. Ultra-fast periodic fallback poll (every 3.5 seconds)
+    const intervalId = setInterval(poll, 3500);
+
+    // 4. Instant poll on tab focus and visibility change
+    const onFocus = () => poll();
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        poll();
+      }
+    };
+    window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onVisibilityChange);
+
     return () => {
+      clearInterval(intervalId);
+      window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+      if (socket) {
+        socket.disconnect();
+      }
       if (eventSource) {
         eventSource.close();
       }
@@ -236,15 +355,16 @@ export function useDashboardData() {
     return found ? normalizeCard(found) : null;
   }, [cards, selectedMessageCardId]);
 
-  // Build the public URL: if owner has a username → thenith.com/username, else use publicId
+  // Build the public URL: unified from SITE_URL / .env
   const owner = dashboardData.owner || {};
   const activeCardLink = useMemo(() => {
+    const base = (typeof import.meta !== "undefined" && import.meta.env?.VITE_SITE_URL) || (typeof window !== "undefined" ? window.location.origin : "");
     const username = owner.username?.trim();
     const publicId = owner.publicId?.trim();
     // USERNAME takes priority — always use username as primary link when available
-    if (username) return `${window.location.origin}/p/${username}`;
-    if (publicId) return `${window.location.origin}/p/${publicId}`;
-    return `${window.location.origin}/p/${activeCard?.publicId || ""}`;
+    if (username) return `${base}/p/${username}`;
+    if (publicId) return `${base}/p/${publicId}`;
+    return `${base}/p/${activeCard?.publicId || ""}`;
   }, [owner.username, owner.publicId, activeCard, cards]);
 
   const updateDashboard = (patcher) => {
@@ -298,6 +418,7 @@ export function useDashboardData() {
     }
 
     const savedCard = normalizeCard(await saveCard(activeCard));
+    broadcastProfileUpdate();
     // Update local dashboard state with the saved card
     updateDashboard((current) => ({
       ...current,
@@ -323,6 +444,7 @@ export function useDashboardData() {
 
   const saveOwner = async () => {
     const result = await saveProfile(dashboardData.owner || {});
+    broadcastProfileUpdate();
     const data = result.profile || result.user;
     if (data) {
       updateDashboard((current) => ({
@@ -363,6 +485,7 @@ export function useDashboardData() {
         cards: [...current.cards, normalizeCard(createdCard)],
       }));
       setActiveCardId(createdCard.id);
+      broadcastProfileUpdate();
       addNotification("تم إنشاء بطاقة جديدة", "card_created");
       return createdCard;
     } catch {
@@ -378,6 +501,7 @@ export function useDashboardData() {
     if (selectedMessageCardId === cardId) setSelectedMessageCardId(null);
     deleteCardRequest(cardId).catch((error) => {
     });
+    broadcastProfileUpdate();
     addNotification(`تم حذف البطاقة "${removed?.name || ""}" بنجاح`, "card_deleted");
   };
 
@@ -450,19 +574,18 @@ export function useDashboardData() {
   const deleteInboxItem = async (cardId, itemId) => {
     const card = cards.find((c) => c.id === cardId);
     if (!card) return;
-    const item = getInboxItems(card).find((i) => i.id === itemId);
-    if (!item) return;
+    const isAppt = (card.appointments || []).some((a) => a.id === itemId);
 
     updateCard(cardId, (card) => ({
       ...card,
-      [card.actionType === "calendar" ? "appointments" : "requests"]:
-        getInboxItems(card).filter((i) => i.id !== itemId),
+      appointments: (card.appointments || []).filter((i) => i.id !== itemId),
+      requests: (card.requests || []).filter((i) => i.id !== itemId),
     }));
 
     try {
       await deleteInboxItemApi(
         cardId,
-        card.actionType === "calendar" ? "calendar" : "form",
+        isAppt ? "calendar" : "form",
         itemId,
       );
     } catch (e) {
@@ -472,25 +595,22 @@ export function useDashboardData() {
   const toggleInboxItemRead = async (cardId, itemId) => {
     const card = cards.find((c) => c.id === cardId);
     if (!card) return;
-    const items = getInboxItems(card);
-    const item = items.find((i) => i.id === itemId);
-    if (!item) return;
+    const isAppt = (card.appointments || []).some((a) => a.id === itemId);
 
-    updateCard(cardId, (card) => {
-      const isCalendar = card.actionType === "calendar";
-      const list = isCalendar ? card.appointments : card.requests;
-      return {
-        ...card,
-        [isCalendar ? "appointments" : "requests"]: (list || []).map((i) =>
-          i.id === itemId ? { ...i, read: !i.read } : i,
-        ),
-      };
-    });
+    updateCard(cardId, (card) => ({
+      ...card,
+      appointments: (card.appointments || []).map((i) =>
+        i.id === itemId ? { ...i, read: !i.read } : i,
+      ),
+      requests: (card.requests || []).map((r) =>
+        r.id === itemId ? { ...r, read: !r.read } : r,
+      ),
+    }));
 
     try {
       await toggleInboxItemReadApi(
         cardId,
-        card.actionType === "calendar" ? "calendar" : "form",
+        isAppt ? "calendar" : "form",
         itemId,
       );
     } catch (e) {
@@ -500,25 +620,22 @@ export function useDashboardData() {
   const markInboxItemRead = async (cardId, itemId) => {
     const card = cards.find((c) => c.id === cardId);
     if (!card) return;
-    const items = getInboxItems(card);
-    const item = items.find((i) => i.id === itemId);
-    if (!item || item.read) return;
+    const isAppt = (card.appointments || []).some((a) => a.id === itemId);
 
-    updateCard(cardId, (card) => {
-      const isCalendar = card.actionType === "calendar";
-      const list = isCalendar ? card.appointments : card.requests;
-      return {
-        ...card,
-        [isCalendar ? "appointments" : "requests"]: (list || []).map((i) =>
-          i.id === itemId ? { ...i, read: true } : i,
-        ),
-      };
-    });
+    updateCard(cardId, (card) => ({
+      ...card,
+      appointments: (card.appointments || []).map((i) =>
+        i.id === itemId ? { ...i, read: true } : i,
+      ),
+      requests: (card.requests || []).map((r) =>
+        r.id === itemId ? { ...r, read: true } : r,
+      ),
+    }));
 
     try {
       await toggleInboxItemReadApi(
         cardId,
-        card.actionType === "calendar" ? "calendar" : "form",
+        isAppt ? "calendar" : "form",
         itemId,
       );
     } catch (e) {

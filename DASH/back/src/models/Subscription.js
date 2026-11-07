@@ -27,12 +27,19 @@ const subscriptionSchema = new mongoose.Schema(
     startedAt: { type: Date, required: true },
     expiresAt: { type: Date, default: null, index: true },
     cancelledAt: { type: Date, default: null },
+    cancelledBy: {
+      type: String,
+      enum: ["user", "admin", "system", null],
+      default: null,
+    },
+    cancellationReason: { type: String, default: "" },
     provider: {
       type: String,
-      enum: ["manual", "paymob", "stripe"],
+      enum: ["manual", "paymob", "stripe", "fawaterak", "free"],
       default: "manual",
     },
     providerSubscriptionId: { type: String, default: null },
+    expiryRemindersSent: { type: [Number], default: [] }, // Tracks [7, 3, 1] milestones
   },
   { timestamps: true },
 );

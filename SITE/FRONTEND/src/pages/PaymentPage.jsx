@@ -50,7 +50,7 @@ import { toast } from "../util/toast";
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function formatMoney(amount) {
-  return `${Number(amount || 0).toLocaleString("ar-EG")} ج.م`;
+  return `${Number(amount || 0).toLocaleString("en-US")} ج.م`;
 }
 
 function isCardMethod(method) {
@@ -344,7 +344,10 @@ export default function PaymentPage({ overrideParams, onClose }) {
   const paymentType = params.get("type"); // "subscription" | "order" | "intent"
   const planId = params.get("planId");
   const billingPeriod = params.get("billingPeriod") || "monthly";
-  const couponCode = params.get("couponCode") || "";
+  const storedReferral = typeof window !== "undefined"
+    ? (localStorage.getItem("thenith_referral_code") || localStorage.getItem("referral_code") || "")
+    : "";
+  const couponCode = (params.get("couponCode") || params.get("ref") || storedReferral || "").trim().toUpperCase();
   const orderId = params.get("orderId");
   const idParam = params.get("id");
   const intentKeyParam = params.get("intentKey");
@@ -389,9 +392,25 @@ export default function PaymentPage({ overrideParams, onClose }) {
   const [error, setError] = useState("");
   const [directResult, setDirectResult] = useState(null);
   const [iframeUrl, setIframeUrl] = useState(null);
+  const [iframeLoading, setIframeLoading] = useState(true);
   const [activeCardIntentKey, setActiveCardIntentKey] = useState(null);
   const [countdown, setCountdown] = useState(null);
   const [copiedFawry, setCopiedFawry] = useState(false);
+  const iframeContainerRef = useRef(null);
+
+  // Auto-scroll when iframe appears
+  useEffect(() => {
+    if (iframeUrl) {
+      setIframeLoading(true);
+      const timer = setTimeout(() => {
+        iframeContainerRef.current?.scrollIntoView({
+          behavior: "smooth",
+          block: "start",
+        });
+      }, 200);
+      return () => clearTimeout(timer);
+    }
+  }, [iframeUrl]);
 
   // Check pending payments and methods on mount with strict user validation
   useEffect(() => {
@@ -510,10 +529,21 @@ export default function PaymentPage({ overrideParams, onClose }) {
         return;
       }
 
-      // If already Pro user with no pending subscriptions, return to dashboard
+      // Check if user's subscription is expiring soon (<= 3 days) or user is renewing
+      const subExpiresAt = user?.subscription?.expiresAt;
+      const daysLeft = subExpiresAt
+        ? Math.ceil((new Date(subExpiresAt).getTime() - Date.now()) / (1000 * 60 * 60 * 24))
+        : 0;
+      const isExpiringSoonOrCanRenew =
+        daysLeft <= 3 ||
+        params.get("renew") === "true" ||
+        params.get("checkout") === "true";
+
+      // If already Pro user with plenty of active days (> 3 days) and not explicitly renewing, return to dashboard
       if (
         effectiveType === "subscription" &&
         user?.subscription?.plan === "pro" &&
+        !isExpiringSoonOrCanRenew &&
         allPending.length === 0
       ) {
         navigate("/u", { replace: true });
@@ -680,8 +710,17 @@ export default function PaymentPage({ overrideParams, onClose }) {
       }
 
       if (!foundPending && list.length > 0 && !selectedMethod) {
-        const wallet = list.find(isWalletMethod);
-        setSelectedMethod(wallet || list[0]);
+        const methodParam = params.get("method");
+        let initialMethod = null;
+        if (methodParam === "card") {
+          initialMethod = list.find(isCardMethod);
+        } else if (methodParam === "fawry") {
+          initialMethod = list.find(isFawryMethod);
+        } else if (methodParam === "wallet") {
+          initialMethod = list.find(isWalletMethod);
+        }
+        const chosen = initialMethod || list.find(isWalletMethod) || list[0];
+        setSelectedMethod(chosen);
       }
 
       setLoading(false);
@@ -692,37 +731,7 @@ export default function PaymentPage({ overrideParams, onClose }) {
     };
   }, []); // Run once on mount
 
-  // Polling for directResult status
-  useEffect(() => {
-    if (!directResult?.intentKey || directResult.paid) return;
-
-    let mounted = true;
-    const interval = setInterval(async () => {
-      try {
-        const res = await api.payment.verify(directResult.intentKey);
-        if (mounted && res.success && res.status === "paid") {
-          clearInterval(interval);
-          if (res.type === "store" || res.type === "order") {
-            clearCart();
-          }
-          const targetType = directResult.type || paymentType || "subscription";
-          const targetId = directResult.returnedId || "";
-          navigate(
-            `/payment/success?type=${targetType}&id=${targetId}&intentKey=${directResult.intentKey}`,
-            { replace: true },
-          );
-          return;
-        }
-      } catch (err) {
-        // Ignore polling errors
-      }
-    }, 5000);
-
-    return () => {
-      mounted = false;
-      clearInterval(interval);
-    };
-  }, [directResult]);
+  // Polling removed: Frontend does not poll. It relies entirely on Fawaterak's redirect/webhook flow.
 
   // Countdown effect
   useEffect(() => {
@@ -747,8 +756,11 @@ export default function PaymentPage({ overrideParams, onClose }) {
   // Validations
   const isWalletValid = /^01[0125][0-9]{8}$/.test(walletNumber);
 
-  const handlePay = useCallback(async () => {
-    if (!selectedMethod) {
+  const isFree = Number(amount) <= 0 || Boolean(invoice?.isFree);
+
+  const handlePay = useCallback(async (targetMethod = null) => {
+    const activeMethod = targetMethod || selectedMethod;
+    if (!isFree && !activeMethod) {
       setError(
         isArabic ? "اختر طريقة الدفع أولاً" : "Please select a payment method",
       );
@@ -756,12 +768,12 @@ export default function PaymentPage({ overrideParams, onClose }) {
     }
 
     // Card Form Validation
-    if (isCard(selectedMethod)) {
-      // Bypassing local card validation since we redirect to Fawaterak secure hosted checkout
+    if (!isFree && isCard(activeMethod)) {
+      // Handled via secure in-page iframe
     }
 
     // Wallet Validation
-    if (needsWallet(selectedMethod)) {
+    if (!isFree && needsWallet(activeMethod)) {
       const clean = walletNumber.replace(/\D/g, "");
       if (!clean) {
         setError(
@@ -785,7 +797,7 @@ export default function PaymentPage({ overrideParams, onClose }) {
     setSubmitting(true);
 
     try {
-      const methodId = selectedMethod ? selectedMethod.payment_method_id : null;
+      const methodId = activeMethod ? activeMethod.payment_method_id : null;
 
       let result;
 
@@ -794,30 +806,35 @@ export default function PaymentPage({ overrideParams, onClose }) {
           planId,
           billingPeriod,
           couponCode: couponCode || undefined,
+          referralRewardId: params.get("referralRewardId") || undefined,
+          applyReferralDiscount: true,
           methodId,
-          walletNumber: needsWallet(selectedMethod) ? walletNumber : undefined,
+          walletNumber: needsWallet(activeMethod) ? walletNumber : undefined,
         });
       } else if (paymentType === "order") {
         result = await api.payment.createOrderIntent(orderId, {
           methodId,
-          walletNumber: needsWallet(selectedMethod) ? walletNumber : undefined,
+          walletNumber: needsWallet(activeMethod) ? walletNumber : undefined,
         });
       }
 
       if (!result) throw new Error("Invalid payment type");
 
-      // Hosted / 3D-Secure Bank Authentication URL (No Iframe)
+      if (result.isFree || isFree) {
+        navigate(`/payment/result?status=success&type=${paymentType}&isFree=true`);
+        return;
+      }
+
+      // Hosted / 3D-Secure Bank Authentication URL -> In-page secure iframe for Cards, or direct redirect
       const redirectUrl = result.checkoutUrl || result.paymentData?.redirectTo;
       if (redirectUrl) {
-        if (isCard(selectedMethod)) {
+        if (isCard(activeMethod)) {
           setActiveCardIntentKey(result.intentKey);
           setIframeUrl(redirectUrl);
           return;
-        } else {
-          // Direct API redirect to the official 3DS Bank OTP verification screen
-          window.location.href = redirectUrl;
-          return;
         }
+        window.location.href = redirectUrl;
+        return;
       }
 
       // Direct dispatch (Meeza, Wallets, Fawry without redirect)
@@ -832,7 +849,7 @@ export default function PaymentPage({ overrideParams, onClose }) {
           invoiceInfo: result.invoiceInfo,
           intentKey: result.intentKey,
           amount: result.amount || amount,
-          method: selectedMethod,
+          method: activeMethod,
           returnedId: result.subscriptionId || result.orderId || orderId,
           createdAt: Date.now(),
         });
@@ -1506,6 +1523,34 @@ export default function PaymentPage({ overrideParams, onClose }) {
                 </div>
               )}
 
+              {/* REFERRAL ATTRIBUTION & DISCOUNT BREAKDOWN */}
+              {invoice?.referralInfo && (
+                <div className="bg-emerald-50/50 dark:bg-emerald-950/20 rounded-2xl p-4 mb-4 border border-emerald-200/60 dark:border-emerald-800/40">
+                  <h4 className="text-[11px] font-black text-emerald-700 dark:text-emerald-400 uppercase tracking-wide mb-2 flex items-center gap-1.5">
+                    <Sparkles className="w-3.5 h-3.5" />
+                    {isArabic ? "مصدر العميل والخصومات الترويجية" : "Acquisition Source & Referral Discount"}
+                  </h4>
+                  <div className="space-y-1.5 text-xs text-slate-600 dark:text-slate-300">
+                    <div className="flex justify-between">
+                      <span>{isArabic ? "نوع المكافأة المطبقة:" : "Applied Reward:"}</span>
+                      <span className="font-bold text-emerald-600 dark:text-emerald-400">
+                        {invoice.referralInfo.rewardType === "invitee_discount"
+                          ? (isArabic ? "خصم دعوة أصدقاء (10%)" : "Invitee Discount (10%)")
+                          : invoice.referralInfo.rewardType === "milestone_discount"
+                          ? (isArabic ? "خصم إنجاز الإحالات (50%)" : "Milestone Reward (50%)")
+                          : (isArabic ? `خصم تجديد شهري (${invoice.referralInfo.discountPercent}%)` : `Monthly Tier (${invoice.referralInfo.discountPercent}%)`)}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>{isArabic ? "قيمة الخصم المقتطع:" : "Discount Amount:"}</span>
+                      <span className="font-bold font-mono text-emerald-600 dark:text-emerald-400">
+                        -{formatMoney(invoice.referralInfo.discountAmount)}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {/* CUSTOMER & DELIVERY INFO FROM DATABASE */}
               {(invoice?.customer || user) && (
                 <div className="bg-slate-50 dark:bg-slate-800/40 rounded-2xl p-4 mb-4 border border-slate-100 dark:border-slate-800">
@@ -1550,11 +1595,52 @@ export default function PaymentPage({ overrideParams, onClose }) {
 
           {/* Left Column: Payment Methods (col-span-8) */}
           <div className="lg:col-span-8 space-y-6">
-            {methods.length === 0 ? (
-              <div className="text-center py-20 text-slate-500 bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 p-6">
-                {isArabic
-                  ? "لا توجد طرق دفع مفعلة حالياً في المتجر."
-                  : "No payment methods available right now."}
+            {isFree ? (
+              <div className="bg-white dark:bg-slate-900 rounded-3xl border border-emerald-200 dark:border-emerald-800 p-8 text-center space-y-4 shadow-sm">
+                <div className="w-16 h-16 rounded-full bg-emerald-50 dark:bg-emerald-950/50 text-emerald-600 dark:text-emerald-400 flex items-center justify-center mx-auto">
+                  <CheckCircle className="w-8 h-8" />
+                </div>
+                <h3 className="text-xl font-black text-slate-900 dark:text-white">
+                  {isArabic ? "هذه العملية مجانية بالكامل (0 ج.م)" : "This transaction is 100% Free (0 EGP)"}
+                </h3>
+                <p className="text-sm text-slate-500 dark:text-slate-400 max-w-md mx-auto">
+                  {isArabic
+                    ? "لا يتطلب اختيار وسيلة دفع. اضغط على الزر أدناه لتأكيد التفعيل فوراً."
+                    : "No payment gateway required. Click below to confirm and activate immediately."}
+                </p>
+                <button
+                  type="button"
+                  onClick={handlePay}
+                  disabled={submitting}
+                  className="w-full max-w-sm mx-auto h-12 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-2xl flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/20 active:scale-95 transition-all cursor-pointer"
+                >
+                  {submitting ? (
+                    <Loader2 className="w-5 h-5 animate-spin" />
+                  ) : (
+                    <span>{isArabic ? "تأكيد وتفعيل مجاناً" : "Confirm and Activate Free"}</span>
+                  )}
+                </button>
+              </div>
+            ) : methods.length === 0 ? (
+              <div className="text-center py-16 text-slate-500 bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 p-6 space-y-3">
+                <AlertCircle className="w-10 h-10 text-amber-500 mx-auto mb-2" />
+                <p className="font-bold text-slate-800 dark:text-slate-200">
+                  {isArabic
+                    ? "لا توجد طرق دفع مفعلة حالياً في المتجر."
+                    : "No payment methods available right now."}
+                </p>
+                <p className="text-xs text-slate-400 max-w-sm mx-auto">
+                  {isArabic
+                    ? "إذا استمرت هذه المشكلة، يرجى إعادة المحاولة أو التواصل مع إدارة المتجر."
+                    : "If this persists, please try reloading or reach out to store support."}
+                </p>
+                <button
+                  type="button"
+                  onClick={() => window.location.reload()}
+                  className="px-5 py-2 text-xs font-bold bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl shadow cursor-pointer transition-all active:scale-95"
+                >
+                  {isArabic ? "إعادة المحاولة" : "Try Again"}
+                </button>
               </div>
             ) : (
               <>
@@ -1607,6 +1693,9 @@ export default function PaymentPage({ overrideParams, onClose }) {
                               setSelectedMethod(method);
                               setError("");
                               setIframeUrl(null);
+                              if (isCardMethod(method)) {
+                                handlePay(method);
+                              }
                             }
                           }}
                           className={`flex flex-col items-center justify-center p-3.5 sm:p-5 rounded-2xl border-2 transition-all duration-200 overflow-hidden ${
@@ -1660,36 +1749,50 @@ export default function PaymentPage({ overrideParams, onClose }) {
                       className="overflow-hidden mb-6"
                     >
                       <div className="p-4 sm:p-6 bg-white dark:bg-slate-900/80 rounded-2xl sm:rounded-3xl border border-slate-200 dark:border-slate-800 shadow-xl shadow-slate-200/40 dark:shadow-none mt-2">
-                        {/* Iframe for Visa/Mastercard (Visible after Pay) */}
+                        {/* Iframe for Visa/Mastercard (Visible after Pay or Selection) */}
                         {isCardMethod(selectedMethod) && iframeUrl && (
                           <div className="space-y-3">
                             <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
                               <div className="flex items-center gap-2 text-xs font-bold text-slate-700 dark:text-slate-300">
                                 <CreditCard className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
-                                <span>{isArabic ? "بوابة الدفع البنكي المشفرة" : "Secure Bank Checkout"}</span>
+                                <span>{isArabic ? "بوابة الدفع البنكي المشفرة (Visa / Mastercard / Meeza)" : "Secure Bank Checkout (Visa / Mastercard / Meeza)"}</span>
                               </div>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  if (activeCardIntentKey) {
-                                    api.payment.cancel(activeCardIntentKey).catch(() => {});
-                                  }
-                                  setIframeUrl(null);
-                                  setActiveCardIntentKey(null);
-                                }}
-                                className="text-xs font-bold text-rose-600 hover:text-rose-700 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/40 hover:bg-rose-100 dark:hover:bg-rose-900/40 px-3 py-1.5 rounded-xl transition-colors flex items-center gap-1.5"
-                              >
-                                <X className="w-3.5 h-3.5" />
-                                <span>{isArabic ? "إلغاء واختيار طريقة أخرى" : "Cancel & Change Method"}</span>
-                              </button>
+                              <div className="flex items-center gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    if (activeCardIntentKey) {
+                                      api.payment.cancel(activeCardIntentKey).catch(() => {});
+                                    }
+                                    setIframeUrl(null);
+                                    setActiveCardIntentKey(null);
+                                    setSelectedMethod(null);
+                                  }}
+                                  className="text-xs font-bold text-rose-600 hover:text-rose-700 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/40 hover:bg-rose-100 dark:hover:bg-rose-900/40 px-3 py-1.5 rounded-xl transition-colors flex items-center gap-1.5 cursor-pointer"
+                                >
+                                  <X className="w-3.5 h-3.5" />
+                                  <span>{isArabic ? "إلغاء" : "Cancel"}</span>
+                                </button>
+                              </div>
                             </div>
                             <div
-                              className="w-full bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-inner"
-                              style={{ height: "650px" }}
+                              ref={iframeContainerRef}
+                              className="w-full bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 overflow-hidden shadow-lg relative"
+                              style={{ height: "820px", minHeight: "780px" }}
                             >
+                              {iframeLoading && (
+                                <div className="absolute inset-0 z-10 bg-white/95 dark:bg-slate-900/95 backdrop-blur-xs flex flex-col items-center justify-center gap-3">
+                                  <Loader2 className="w-8 h-8 animate-spin text-indigo-600 dark:text-indigo-400" />
+                                  <p className="text-xs font-bold text-slate-600 dark:text-slate-300">
+                                    {isArabic ? "جاري تحميل بوابة الدفع البنكي الآمنة..." : "Loading secure payment portal..."}
+                                  </p>
+                                </div>
+                              )}
                               <iframe
                                 src={iframeUrl}
+                                onLoad={() => setIframeLoading(false)}
                                 className="w-full h-full border-0"
+                                allow="payment"
                                 allowFullScreen
                                 title="Secure Payment Portal"
                               />
@@ -1697,18 +1800,49 @@ export default function PaymentPage({ overrideParams, onClose }) {
                           </div>
                         )}
 
-                        {/* Card Info before Pay */}
+                        {/* Card Loading / Retry before iframeUrl */}
                         {isCardMethod(selectedMethod) && !iframeUrl && !directResult && (
-                          <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-800 space-y-2 text-start mb-2">
-                            <div className="flex items-center gap-2 text-indigo-600 dark:text-indigo-400 font-bold text-sm">
-                              <ShieldCheck className="w-4 h-4" />
-                              <span>{isArabic ? "الدفع الآمن عبر البطاقات البنكية" : "Secure Card Payment"}</span>
-                            </div>
-                            <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
-                              {isArabic
-                                ? "عند الضغط على تأكيد ودفع، سيتم فتح بوابة الدفع البنكي المشفرة والآمنة (3D-Secure) الخاصة بفيزا وماستركارد وميزة لإتمام السداد."
-                                : "Upon clicking confirm and pay, the secure 3D-Secure bank portal for Visa, Mastercard, and Meeza will open to complete payment."}
-                            </p>
+                          <div className="space-y-4">
+                            {submitting ? (
+                              <div className="py-12 flex flex-col items-center justify-center gap-3 text-center">
+                                <Loader2 className="w-8 h-8 animate-spin text-indigo-600 dark:text-indigo-400" />
+                                <p className="text-sm font-bold text-slate-700 dark:text-slate-200">
+                                  {isArabic ? "جاري تجهيز بوابة الدفع البنكي الآمنة في نفس الصفحة..." : "Preparing secure bank portal in this page..."}
+                                </p>
+                                <p className="text-xs text-slate-400">
+                                  {isArabic ? "يرجى الانتظار لحظات، لن تغادر الموقع." : "Please wait a moment, you will not leave the website."}
+                                </p>
+                              </div>
+                            ) : (
+                              <>
+                                <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-800 space-y-2 text-start mb-2">
+                                  <div className="flex items-center gap-2 text-indigo-600 dark:text-indigo-400 font-bold text-sm">
+                                    <ShieldCheck className="w-4 h-4" />
+                                    <span>{isArabic ? "الدفع الآمن عبر البطاقات البنكية" : "Secure Card Payment"}</span>
+                                  </div>
+                                  <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+                                    {isArabic
+                                      ? "سيتم فتح بوابة الدفع البنكي المشفرة والآمنة (3D-Secure) الخاصة بفيزا وماستركارد وميزة مباشرة في نفس الصفحة لإتمام السداد بكل سهولة وأمان."
+                                      : "The secure 3D-Secure bank portal for Visa, Mastercard, and Meeza will open directly in this page to complete payment."}
+                                  </p>
+                                </div>
+
+                                <button
+                                  type="button"
+                                  onClick={() => handlePay(selectedMethod)}
+                                  disabled={submitting}
+                                  className="w-full py-3.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-base shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-[0.99]"
+                                >
+                                  <Lock className="w-5 h-5" />
+                                  <span>
+                                    {isArabic
+                                      ? `فتح بوابة الدفع ودفع ${formatMoney(amount)}`
+                                      : `Open Bank Portal & Pay ${formatMoney(amount)}`}
+                                  </span>
+                                  <ArrowRight className={`w-5 h-5 ${isArabic ? "rotate-180" : ""}`} />
+                                </button>
+                              </>
+                            )}
                           </div>
                         )}
 
@@ -1798,11 +1932,11 @@ export default function PaymentPage({ overrideParams, onClose }) {
 
                         {directResult && renderDirectResult()}
 
-                        {/* Pay Button inside accordion */}
-                        {!iframeUrl && !directResult && (
+                        {/* Pay Button inside accordion (for non-card methods: Fawry, Wallets) */}
+                        {!iframeUrl && !directResult && !isCardMethod(selectedMethod) && (
                           <button
                             type="button"
-                            onClick={handlePay}
+                            onClick={() => handlePay()}
                             disabled={
                               submitting ||
                               !selectedMethod ||
