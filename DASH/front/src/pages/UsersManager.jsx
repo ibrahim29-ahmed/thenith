@@ -1202,7 +1202,7 @@ export default function UsersManager() {
               <div className="flex items-center justify-between gap-3 mb-2">
                 <div>
                   <h4 className="text-sm font-black text-indigo-950 flex items-center gap-2">
-                    <span>2. باقة / خدمة Thenith Payment Plus (جانبية)</span>
+                    <span>2. باقة Thenith Payment Plus</span>
                   </h4>
                   <p className="text-xs text-slate-500 mt-0.5">
                     صفحة الدفع الموحدة لجميع المحافظ الإلكترونية وروابط الدفع المباشرة.

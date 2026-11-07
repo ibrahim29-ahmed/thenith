@@ -117,18 +117,7 @@ async function seedPlans() {
   );
   await Plan.updateOne(
     { key: "payment_plus" },
-    {
-      $set: {
-        name: NEW_PAYMENT_PLUS_PLAN.name,
-        isActive: true,
-      },
-      $setOnInsert: {
-        prices: NEW_PAYMENT_PLUS_PLAN.prices,
-        limits: NEW_PAYMENT_PLUS_PLAN.limits,
-        features: NEW_PAYMENT_PLUS_PLAN.features,
-        marketingFeatures: NEW_PAYMENT_PLUS_PLAN.marketingFeatures,
-      },
-    },
+    { $setOnInsert: NEW_PAYMENT_PLUS_PLAN },
     { upsert: true },
   );
   await Plan.updateOne(

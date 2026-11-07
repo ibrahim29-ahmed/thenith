@@ -642,10 +642,10 @@ export default function SubscriptionsManager() {
                 <h3 className="text-lg font-black text-slate-800">
                   {planName}
                 </h3>
-                {isSide && (
+                {isSide && !isPaymentPlus && (
                   <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-indigo-100 text-indigo-700 border border-indigo-200">
                     <Sparkles className="w-3 h-3 text-indigo-500" />
-                    خدمة جانبية
+                    إضافية
                   </span>
                 )}
                 {!isSide && (
@@ -850,10 +850,7 @@ export default function SubscriptionsManager() {
             </div>
             <div>
               <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
-                <span>الخدمات والباقات الجانبية (Add-on Services)</span>
-                <span className="text-[11px] font-bold bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full">
-                  جانبية
-                </span>
+                <span>باقات وخدمات الدفع والمحافظ (Payment Plans)</span>
               </h3>
               <p className="text-xs text-slate-500">
                 خدمات إضافية مستقلة مثل Thenith Payment Plus (صفحة الدفع الموحدة) مع إمكانية التفعيل أو التعطيل السريع
