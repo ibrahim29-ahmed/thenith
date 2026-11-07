@@ -300,31 +300,54 @@ function ProductForm({ initial, categories = [], onCategoryCreated, onSave, onCa
   const handleImageUpload = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    if (!file.type.startsWith("image/"))
-      return alert("الرجاء اختيار صورة صالحة");
+    if (!file.type.startsWith("image/")) {
+      alert("الرجاء اختيار صورة صالحة (PNG, JPG, WEBP, SVG)");
+      return;
+    }
+    if (file.size > 25 * 1024 * 1024) {
+      alert("حجم الصورة كبير جداً، الحد الأقصى المسموح به 25 ميجابايت");
+      return;
+    }
 
     setUploading(true);
     try {
       const reader = new FileReader();
-      reader.readAsDataURL(file);
       reader.onload = async () => {
         try {
-          const { url } = await uploadAdminImage(
+          const res = await uploadAdminImage(
             reader.result,
             "thenith_store",
           );
+          const uploadedUrl = res?.url || (typeof res === "string" ? res : "");
+          if (!uploadedUrl) {
+            throw new Error("لم يتم استلام رابط الصورة من السيرفر");
+          }
           setForm((prev) => ({
             ...prev,
-            images: [...prev.images, { url, color: "", colorName: "" }],
+            images: [...prev.images, { url: uploadedUrl, color: "", colorName: "" }],
           }));
         } catch (err) {
-          alert("فشل رفع الصورة");
+          alert(
+            err.response?.data?.error ||
+              err.response?.data?.message ||
+              err.message ||
+              "فشل رفع الصورة"
+          );
         } finally {
           setUploading(false);
+          if (fileInputRef.current) {
+            fileInputRef.current.value = "";
+          }
         }
       };
+      reader.onerror = () => {
+        setUploading(false);
+        alert("تعذر قراءة ملف الصورة من جهازك");
+      };
+      reader.readAsDataURL(file);
     } catch (err) {
       setUploading(false);
+      alert("حدث خطأ غير متوقع أثناء معالجة الصورة");
     }
   };
 

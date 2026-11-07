@@ -260,11 +260,25 @@ const resolvePublicWallet = asyncHandler(async (req, res) => {
       ...(mongoose.Types.ObjectId.isValid(identifier) ? [{ _id: identifier }] : []),
     ],
   })
-    .select("_id name username publicId paymentMethods activePaymentMethodId avatar paymentPlusActive")
+    .select("_id name username publicId paymentMethods activePaymentMethodId avatar coverImage paymentPlusActive activeCardId paymentPageSettings")
     .lean();
 
   if (!user) {
     throw new HttpError(404, "المستخدم أو المحفظة المطلوبة غير موجودة");
+  }
+
+  const pageSettings = user.paymentPageSettings || {};
+  let effectiveCover = pageSettings.coverImage || user.coverImage || "";
+  let effectiveAvatar = pageSettings.avatar || user.avatar || "";
+  let effectiveDisplayName = pageSettings.displayName || user.name || "";
+  let effectiveBio = pageSettings.description || "";
+
+  if ((!effectiveCover || !effectiveAvatar) && user.activeCardId) {
+    const activeCard = await Card.findById(user.activeCardId).select("coverImage avatar").lean().catch(() => null);
+    if (activeCard) {
+      if (!effectiveCover && activeCard.coverImage) effectiveCover = activeCard.coverImage;
+      if (!effectiveAvatar && activeCard.avatar) effectiveAvatar = activeCard.avatar;
+    }
   }
 
   const methods = Array.isArray(user.paymentMethods) ? user.paymentMethods : [];
@@ -288,38 +302,47 @@ const resolvePublicWallet = asyncHandler(async (req, res) => {
       activeSub.planId?.features?.unifiedPaymentHub === true))
   );
 
-  // Match target method by payParam (id, customSlug, or provider)
+  // Unified hub access policy:
+  // Requires user to have enabled unified hub in payment page settings AND has active Payment Plus!
+  const isUnifiedHubActive = Boolean(pageSettings.isUnifiedHubEnabled && hasPaymentPlus);
+  const canAccessUnifiedHub = isUnifiedHubActive;
+
+  // Match target method by payParam (id, customSlug, provider, or name)
   let targetMethod = null;
   if (payParam) {
+    const pLower = payParam.toLowerCase().trim();
+    // 1. Exact match by unique ID
     targetMethod = methods.find(
-      (m) =>
-        m.id === payParam ||
-        m.customSlug === payParam ||
-        m.provider?.toLowerCase() === payParam.toLowerCase()
+      (m) => m.id && String(m.id).toLowerCase() === pLower
     );
+    // 2. Exact match by customSlug
+    if (!targetMethod) {
+      targetMethod = methods.find(
+        (m) => m.customSlug && m.customSlug.toLowerCase() === pLower
+      );
+    }
+    // 3. Match by provider
+    if (!targetMethod) {
+      targetMethod = methods.find(
+        (m) => m.provider && m.provider.toLowerCase() === pLower
+      );
+    }
+    // 4. Match by name
+    if (!targetMethod) {
+      targetMethod = methods.find(
+        (m) => m.name && m.name.toLowerCase() === pLower
+      );
+    }
   }
 
-  // Fallback to active payment method or first method
-  if (!targetMethod) {
+  // Fallback to active payment method or first method ONLY when NO payParam was passed
+  if (!payParam && !targetMethod) {
     if (user.activePaymentMethodId) {
       targetMethod = methods.find((m) => m.id === user.activePaymentMethodId);
     }
     if (!targetMethod && methods.length > 0) {
       targetMethod = methods[0];
     }
-  }
-
-  // Unified hub access policy:
-  // If user does NOT have the Payment Plus plan, access to the unified hub is strictly disabled.
-  // Instead, the request automatically redirects on the same link to their primary active wallet!
-  const canAccessUnifiedHub = hasPaymentPlus && !payParam;
-
-  // If not entitled to unified hub, force targetMethod to active payment method
-  if (!hasPaymentPlus && !payParam) {
-    const primaryMethod = user.activePaymentMethodId
-      ? methods.find((m) => m.id === user.activePaymentMethodId)
-      : null;
-    targetMethod = primaryMethod || targetMethod || methods[0] || null;
   }
 
   // If direct browser redirect is requested via ?redirect=true or header
@@ -334,53 +357,62 @@ const resolvePublicWallet = asyncHandler(async (req, res) => {
 
   const panelSetting = await Setting.findOne({ key: "panel_payment_methods_config" }).lean().catch(() => null);
 
+  const allFormattedMethods = methods.map((m) => ({
+    id: m.id,
+    name: m.name,
+    provider: m.provider,
+    link: m.link,
+    walletNumber: m.walletNumber || "",
+    accountName: m.accountName || "",
+    customSlug: m.customSlug,
+    isActive: m.id === user.activePaymentMethodId,
+  }));
+
+  const formattedTargetMethod = targetMethod
+    ? {
+        id: targetMethod.id,
+        name: targetMethod.name,
+        provider: targetMethod.provider,
+        link: targetMethod.link,
+        walletNumber: targetMethod.walletNumber || "",
+        accountName: targetMethod.accountName || "",
+        customSlug: targetMethod.customSlug,
+        isActive: targetMethod.id === user.activePaymentMethodId,
+      }
+    : null;
+
+  // Determine returned methods:
+  // - If specific wallet requested via payParam -> return ONLY that single target method!
+  // - If user only has 1 method in total -> return that single method!
+  // - If user has Payment Plus and visited unified hub (no payParam) -> return all methods!
+  // - If user lacks Payment Plus and visited unified hub without payParam -> return empty (blocked from unified hub).
+  let returnedMethods = [];
+  if (formattedTargetMethod && payParam) {
+    returnedMethods = [formattedTargetMethod];
+  } else if (allFormattedMethods.length === 1 && formattedTargetMethod) {
+    returnedMethods = [formattedTargetMethod];
+  } else if (canAccessUnifiedHub) {
+    returnedMethods = allFormattedMethods;
+  } else {
+    returnedMethods = [];
+  }
+
   res.json({
     success: true,
     user: {
       id: user._id,
-      name: user.name,
+      name: effectiveDisplayName,
       username: user.username,
       publicId: user.publicId,
-      avatar: user.avatar,
+      avatar: effectiveAvatar,
+      coverImage: effectiveCover,
+      bio: effectiveBio,
     },
     panelConfig: panelSetting?.value || null,
     hasPaymentPlus,
     canAccessUnifiedHub,
-    method: targetMethod
-      ? {
-          id: targetMethod.id,
-          name: targetMethod.name,
-          provider: targetMethod.provider,
-          link: targetMethod.link,
-          walletNumber: targetMethod.walletNumber || "",
-          accountName: targetMethod.accountName || "",
-          customSlug: targetMethod.customSlug,
-          isActive: targetMethod.id === user.activePaymentMethodId,
-        }
-      : null,
-    allMethods: canAccessUnifiedHub
-      ? methods.map((m) => ({
-          id: m.id,
-          name: m.name,
-          provider: m.provider,
-          link: m.link,
-          walletNumber: m.walletNumber || "",
-          accountName: m.accountName || "",
-          customSlug: m.customSlug,
-          isActive: m.id === user.activePaymentMethodId,
-        }))
-      : targetMethod
-      ? [{
-          id: targetMethod.id,
-          name: targetMethod.name,
-          provider: targetMethod.provider,
-          link: targetMethod.link,
-          walletNumber: targetMethod.walletNumber || "",
-          accountName: targetMethod.accountName || "",
-          customSlug: targetMethod.customSlug,
-          isActive: true,
-        }]
-      : [],
+    method: formattedTargetMethod,
+    allMethods: returnedMethods,
   });
 });
 

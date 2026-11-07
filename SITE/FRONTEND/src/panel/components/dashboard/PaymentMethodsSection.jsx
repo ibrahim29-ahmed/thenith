@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Wallet,
@@ -15,6 +15,12 @@ import {
   Sparkles,
   Lock,
   CreditCard,
+  Settings,
+  Star,
+  Upload,
+  Image as ImageIcon,
+  ToggleLeft,
+  ToggleRight,
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import toast from "react-hot-toast";
@@ -26,7 +32,9 @@ import {
   updatePaymentMethod,
   setActivePaymentMethod,
   deletePaymentMethod,
+  updatePaymentPageSettings,
 } from "../../services/dashboardApi.js";
+import { uploadRoutes } from "../../../api/routes/upload.js";
 
 // ── Official Normalized Wallet Logos ──────────────────────────────────────────
 
@@ -165,6 +173,21 @@ export default function PaymentMethodsSection({
   const [copiedId, setCopiedId] = useState(null);
   const [panelConfig, setPanelConfig] = useState(null);
 
+  // Payment Page Settings State
+  const [paymentPageSettings, setPaymentPageSettings] = useState(null);
+  const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
+  const [isSettingsSaving, setIsSettingsSaving] = useState(false);
+  const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
+  const [isUploadingCover, setIsUploadingCover] = useState(false);
+  const [settingsForm, setSettingsForm] = useState({
+    avatar: "",
+    coverImage: "",
+    displayName: "",
+    description: "",
+  });
+  const avatarInputRef = useRef(null);
+  const coverInputRef = useRef(null);
+
   // New Method Form State
   const [addFormData, setAddFormData] = useState({
     name: "",
@@ -201,8 +224,8 @@ export default function PaymentMethodsSection({
       (typeof import.meta !== "undefined" && import.meta.env?.VITE_SITE_URL) ||
       window.location.origin;
     const identifier = userIdentifier || ownerUsername || ownerPublicId || "";
-    const slug = method.customSlug || method.provider || method.id;
-    return `${origin}/m/${identifier}?pay=${encodeURIComponent(slug)}`;
+    const slug = method.customSlug || method.id;
+    return `${origin}/pay/${identifier}?pay=${encodeURIComponent(slug)}`;
   };
 
   // Helper to build unified all-methods link
@@ -239,6 +262,9 @@ export default function PaymentMethodsSection({
             setPanelConfig(res.panelConfig);
           }
           setHasPaymentPlus(Boolean(res.hasPaymentPlus));
+          if (res.paymentPageSettings) {
+            setPaymentPageSettings(res.paymentPageSettings);
+          }
           const methods = res.paymentMethods || [];
           setPaymentMethods(methods);
           setActivePaymentMethodId(
@@ -503,11 +529,7 @@ export default function PaymentMethodsSection({
       we_pay: "TH-PAY-WEPAY",
     };
     const sku = skuMap[method.provider] || "TH-PAY-CARD";
-    const isSelected = method.id === activePaymentMethodId;
-    const isPrimaryNoSub = !hasPaymentPlus && isSelected;
-    const effectiveLink = isPrimaryNoSub
-      ? getUnifiedPaymentLink()
-      : getCustomMethodLink(method);
+    const primaryLink = getUnifiedPaymentLink(); // اللينك الأساسي للكارت: /pay/:identifier
 
     const params = new URLSearchParams();
     params.set("category", "وسائل الدفع");
@@ -517,7 +539,7 @@ export default function PaymentMethodsSection({
     params.set("walletName", method.name || prov.nameAr);
     if (method.walletNumber) params.set("walletNumber", method.walletNumber);
     if (method.accountName) params.set("accountName", method.accountName);
-    params.set("targetLink", effectiveLink);
+    params.set("targetLink", primaryLink);
 
     navigate(`/u/products?${params.toString()}`);
   };
@@ -541,7 +563,7 @@ export default function PaymentMethodsSection({
   return (
     <div className="space-y-6">
       {/* ── Top Header ── */}
-      <div className="flex flex-col justify-between gap-3 rounded-[20px] bg-white p-3 shadow-sm dark:bg-slate-950/45 sm:flex-row sm:items-center sm:rounded-[24px] sm:p-4 md:bg-transparent md:p-0 md:shadow-none">
+      <div className="flex flex-col justify-between gap-4 rounded-[20px] bg-white p-3 shadow-sm dark:bg-slate-950/45 sm:flex-row sm:items-center sm:rounded-[24px] sm:p-4 md:bg-transparent md:p-0 md:shadow-none">
         <div className="min-w-0">
           <h1 className="text-[clamp(1.35rem,5vw,1.5rem)] font-black text-slate-900 dark:text-white flex items-center gap-2.5">
             <Wallet className="w-6 h-6 text-indigo-600 dark:text-indigo-400" />
@@ -552,131 +574,172 @@ export default function PaymentMethodsSection({
           </p>
         </div>
 
-        <button
-          onClick={() => setIsAddModalOpen(true)}
-          className="flex min-h-11 w-full shrink-0 items-center justify-center gap-2 rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-bold text-white transition-all hover:bg-indigo-700 shadow-sm sm:w-auto cursor-pointer"
-        >
-          <Plus className="h-4 w-4" />
-          <span>{isAr ? "إضافة وسيلة دفع" : "Add Payment Method"}</span>
-        </button>
+        <div className="flex items-center gap-2 w-full sm:w-auto">
+          <button
+            onClick={() => {
+              setSettingsForm({
+                avatar: paymentPageSettings?.avatar || "",
+                coverImage: paymentPageSettings?.coverImage || "",
+                displayName: paymentPageSettings?.displayName || "",
+                description: paymentPageSettings?.description || "",
+              });
+              setIsSettingsModalOpen(true);
+            }}
+            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 hover:text-indigo-600 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-white transition-all shadow-sm cursor-pointer"
+            title={isAr ? "إعدادات صفحة الدفع" : "Payment Page Settings"}
+          >
+            <Settings className="h-5 w-5" />
+          </button>
+          <button
+            onClick={() => setIsAddModalOpen(true)}
+            className="flex min-h-11 flex-1 sm:flex-initial items-center justify-center gap-2 rounded-xl bg-indigo-600 px-4 py-2.5 text-xs sm:text-sm font-bold text-white transition-all hover:bg-indigo-700 shadow-sm whitespace-nowrap cursor-pointer"
+          >
+            <Plus className="h-4 w-4 shrink-0" />
+            <span>{isAr ? "إضافة وسيلة دفع" : "Add Payment Method"}</span>
+          </button>
+        </div>
       </div>
 
-      {/* ── Unified Payment Hub Banner (رابط يجمع كل وسائل الدفع) ── */}
-      {!isLoading && paymentMethods.length > 0 && (
-        <div
-          className={`rounded-[22px] border p-4 sm:p-5 transition-all shadow-sm ${
-            hasPaymentPlus
-              ? "border-slate-200/90 bg-white dark:border-slate-800/90 dark:bg-slate-950/45"
-              : "border-amber-200/80 bg-gradient-to-r from-amber-50/40 via-white to-white dark:border-amber-900/30 dark:from-amber-950/15 dark:via-slate-950/45 dark:to-slate-950/45"
-          }`}
-        >
-          <div className="flex flex-col gap-3.5 md:flex-row md:items-center md:justify-between">
-            <div className="min-w-0 flex-1">
-              <div className="flex items-center gap-2 mb-1.5 flex-wrap">
-                <h3 className="text-sm font-black text-slate-900 dark:text-white flex items-center gap-2">
-                  {!hasPaymentPlus && (
-                    <Lock className="h-4 w-4 text-amber-500 shrink-0" />
-                  )}
-                  <span>
-                    {isAr
-                      ? "رابط صفحة الدفع الموحدة"
-                      : "Unified Payment Page Link"}
-                  </span>
-                </h3>
+      {/* ── Primary Link + Unified Hub Toggle ── */}
+      {!isLoading && paymentMethods.length > 0 && (() => {
+        const primaryMethod = paymentMethods.find((m) => m.id === activePaymentMethodId);
+        const primaryLink = (() => {
+          const origin =
+            (typeof import.meta !== "undefined" && import.meta.env?.VITE_SITE_URL) ||
+            window.location.origin;
+          const identifier = userIdentifier || ownerUsername || ownerPublicId || "";
+          return `${origin}/pay/${identifier}`;
+        })();
+        const isUnifiedEnabled = paymentPageSettings?.isUnifiedHubEnabled === true;
 
-                <span
-                  className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full border ${
-                    hasPaymentPlus
-                      ? "text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/60 border-emerald-200/60 dark:border-emerald-900/40"
-                      : "text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/50 border-amber-200/80 dark:border-amber-800/40"
+        return (
+          <div className={`rounded-[22px] border p-4 sm:p-5 transition-all shadow-sm ${
+            hasPaymentPlus && isUnifiedEnabled
+              ? "border-emerald-200/80 bg-gradient-to-r from-emerald-50/30 via-white to-white dark:border-emerald-900/40 dark:from-emerald-950/10 dark:via-slate-950/45 dark:to-slate-950/45"
+              : !hasPaymentPlus
+              ? "border-amber-200/80 bg-gradient-to-r from-amber-50/40 via-white to-white dark:border-amber-900/30 dark:from-amber-950/15 dark:via-slate-950/45 dark:to-slate-950/45"
+              : "border-slate-200/90 bg-white dark:border-slate-800/90 dark:bg-slate-950/45"
+          }`}>
+            <div className="flex flex-col gap-3.5 md:flex-row md:items-center md:justify-between">
+              <div className="min-w-0 flex-1">
+                {/* Header Row: Title */}
+                <div className="flex items-center gap-2 mb-1.5 flex-wrap">
+                  <h3 className="text-sm font-black text-slate-900 dark:text-white flex items-center gap-2">
+                    <Link2 className="h-4 w-4 text-indigo-600 dark:text-indigo-400 shrink-0" />
+                    <span>{isAr ? "اللينك الأساسي للكارت" : "Primary Card Link"}</span>
+                  </h3>
+                </div>
+
+                <p className="text-[11px] text-slate-500 dark:text-slate-400 mb-2.5 leading-relaxed">
+                  {hasPaymentPlus && isUnifiedEnabled
+                    ? isAr
+                      ? "الصفحة المجمعة مفعّلة وتعرض جميع وسائل الدفع المضافة في صفحة واحدة للعميل."
+                      : "The unified page is enabled and displays all your added payment methods on one page."
+                    : primaryMethod
+                    ? isAr
+                      ? `هذا الرابط يفتح وسيلة الدفع الأساسية (${primaryMethod.name}) مباشرة للعميل.`
+                      : `This link opens your primary payment method (${primaryMethod.name}) directly.`
+                    : isAr
+                    ? "هذا الرابط يفتح وسيلة الدفع الأساسية المحددة مباشرة للعميل."
+                    : "This link opens your designated primary payment method directly."}
+                </p>
+
+                {/* Primary Card Link Box */}
+                <div className="flex max-w-xl items-center gap-2 rounded-xl border border-slate-200 bg-slate-50/90 px-3 py-2 dark:border-slate-800 dark:bg-slate-900/60">
+                  <Link2 className="h-3.5 w-3.5 text-indigo-500 shrink-0" />
+                  <span
+                    dir="ltr"
+                    className="truncate text-xs font-mono font-bold text-slate-700 dark:text-slate-300 select-all flex-1"
+                  >
+                    {primaryLink}
+                  </span>
+                </div>
+              </div>
+
+              {/* Actions: Copy + Preview + Toggle Button */}
+              <div className="flex flex-wrap items-center gap-2 pt-1 md:pt-0 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => handleCopy(primaryLink, "primary_link")}
+                  className={`flex h-10 items-center justify-center gap-1.5 rounded-xl px-4 text-xs font-bold transition-all shadow-sm cursor-pointer ${
+                    copiedId === "primary_link"
+                      ? "bg-emerald-600 text-white"
+                      : "bg-indigo-600 hover:bg-indigo-700 text-white"
                   }`}
                 >
-                  {hasPaymentPlus
-                    ? "Thenith Payment Plus • مفعّل"
-                    : isAr
-                    ? "مغلق • يتطلب باقة Thenith Payment Plus"
-                    : "Locked • Requires Payment Plus"}
-                </span>
-              </div>
+                  {copiedId === "primary_link" ? (
+                    <>
+                      <Check className="h-4 w-4" />
+                      <span>{isAr ? "تم النسخ" : "Copied"}</span>
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="h-4 w-4" />
+                      <span>{isAr ? "نسخ الرابط" : "Copy Link"}</span>
+                    </>
+                  )}
+                </button>
 
-              {!hasPaymentPlus && (
-                <p className="text-xs text-slate-500 dark:text-slate-400 mb-2.5 leading-relaxed">
-                  {isAr
-                    ? "خدمة الصفحة الموحدة متاحة حصرياً لمشتركي باقة Thenith Payment Plus. يتم تحويل زوار هذا الرابط تلقائياً إلى وسيلتك الأساسية الحالية."
-                    : "The unified hub page is exclusive to Thenith Payment Plus subscribers. Visitors to this link are automatically redirected to your primary active method."}
-                </p>
-              )}
-
-              {/* Link Box */}
-              <div
-                className={`flex max-w-xl items-center gap-2 rounded-xl border px-3 py-2 ${
-                  hasPaymentPlus
-                    ? "border-slate-200 bg-slate-50/90 dark:border-slate-800 dark:bg-slate-900/60"
-                    : "border-slate-200/70 bg-slate-100/60 dark:border-slate-800/60 dark:bg-slate-900/40 opacity-75"
-                }`}
-              >
-                {!hasPaymentPlus && (
-                  <Lock className="h-3.5 w-3.5 text-slate-400 shrink-0" />
-                )}
-                <span
-                  dir="ltr"
-                  className="truncate text-xs font-mono font-bold text-slate-700 dark:text-slate-300 select-all flex-1"
+                <a
+                  href={primaryLink}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex h-10 items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-white px-4 text-xs font-bold text-slate-700 hover:bg-slate-50 hover:text-indigo-600 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800 dark:hover:text-white transition-all shadow-sm"
                 >
-                  {getUnifiedPaymentLink()}
-                </span>
-              </div>
-            </div>
+                  <ExternalLink className="h-4 w-4" />
+                  <span>{isAr ? "معاينة" : "Preview"}</span>
+                </a>
 
-            {/* Actions */}
-            <div className="flex shrink-0 items-center gap-2 pt-1 md:pt-0">
-              {hasPaymentPlus ? (
-                <>
+                {hasPaymentPlus ? (
                   <button
                     type="button"
-                    onClick={() =>
-                      handleCopy(getUnifiedPaymentLink(), "unified_hub")
-                    }
-                    className={`flex h-10 items-center justify-center gap-1.5 rounded-xl px-4 text-xs font-bold transition-all shadow-sm cursor-pointer ${
-                      copiedId === "unified_hub"
-                        ? "bg-emerald-600 text-white"
-                        : "bg-indigo-600 hover:bg-indigo-700 text-white"
+                    onClick={async () => {
+                      try {
+                        const newVal = !isUnifiedEnabled;
+                        setPaymentPageSettings((prev) => ({
+                          ...prev,
+                          isUnifiedHubEnabled: newVal,
+                        }));
+                        await updatePaymentPageSettings({
+                          isUnifiedHubEnabled: newVal,
+                        });
+                        toast.success(
+                          isAr
+                            ? newVal
+                              ? "تم تفعيل صفحة وسائل الدفع المجمعة"
+                              : "تم إيقاف الصفحة المجمعة (سيفتح الوسيلة الأساسية)"
+                            : newVal
+                            ? "Unified payment page enabled"
+                            : "Unified page disabled (opens primary)"
+                        );
+                      } catch (err) {
+                        setPaymentPageSettings((prev) => ({
+                          ...prev,
+                          isUnifiedHubEnabled: isUnifiedEnabled,
+                        }));
+                        toast.error(
+                          isAr ? "حدث خطأ" : "Something went wrong"
+                        );
+                      }
+                    }}
+                    className={`flex h-10 items-center justify-center gap-2 rounded-xl px-4 text-xs font-bold transition-all shadow-sm cursor-pointer ${
+                      isUnifiedEnabled
+                        ? "bg-emerald-600 hover:bg-emerald-700 text-white"
+                        : "bg-slate-100 hover:bg-slate-200 text-slate-700 dark:bg-slate-800 dark:hover:bg-slate-700 dark:text-slate-200"
                     }`}
                   >
-                    {copiedId === "unified_hub" ? (
-                      <>
-                        <Check className="h-4 w-4" />
-                        <span>{isAr ? "تم النسخ" : "Copied"}</span>
-                      </>
+                    {isUnifiedEnabled ? (
+                      <ToggleRight className="h-5 w-5" />
                     ) : (
-                      <>
-                        <Copy className="h-4 w-4" />
-                        <span>{isAr ? "نسخ الرابط" : "Copy Link"}</span>
-                      </>
+                      <ToggleLeft className="h-5 w-5" />
                     )}
-                  </button>
-
-                  <a
-                    href={getUnifiedPaymentLink()}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex h-10 items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-white px-4 text-xs font-bold text-slate-700 hover:bg-slate-50 hover:text-indigo-600 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800 dark:hover:text-white transition-all shadow-sm"
-                  >
-                    <ExternalLink className="h-4 w-4" />
-                    <span>{isAr ? "معاينة" : "Preview"}</span>
-                  </a>
-
-                  <button
-                    type="button"
-                    onClick={handleOrderUnifiedCard}
-                    className="flex h-10 items-center justify-center rounded-xl bg-slate-900 hover:bg-black dark:bg-white dark:text-slate-900 dark:hover:bg-slate-100 px-5 text-xs font-bold text-white transition-all shadow-xs cursor-pointer"
-                  >
                     <span>
-                      {isAr ? "إنشاء كارت للدفع" : "Order Payment Card"}
+                      {isUnifiedEnabled
+                        ? isAr ? "الصفحة المجمعة: مفعّلة" : "Unified: Enabled"
+                        : isAr ? "تفعيل الصفحة المجمعة" : "Enable Unified"}
                     </span>
                   </button>
-                </>
-              ) : (
-                <div className="flex items-center gap-2">
+                ) : (
                   <button
                     type="button"
                     onClick={() => {
@@ -686,31 +749,17 @@ export default function PaymentMethodsSection({
                         navigate("/u/subscriptions");
                       }
                     }}
-                    className="flex h-10 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-amber-600 to-indigo-600 hover:from-amber-500 hover:to-indigo-500 px-5 text-xs font-black text-white transition-all shadow-md cursor-pointer"
+                    className="flex h-10 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-amber-600 to-indigo-600 hover:from-amber-500 hover:to-indigo-500 px-4 text-xs font-black text-white transition-all shadow-md cursor-pointer"
                   >
                     <Sparkles className="h-4 w-4" />
-                    <span>
-                      {isAr
-                        ? "تصفح الباقات"
-                        : "Browse Plans"}
-                    </span>
+                    <span>{isAr ? "تصفح الباقات" : "Browse Plans"}</span>
                   </button>
-
-                  <button
-                    type="button"
-                    onClick={handleOrderUnifiedCard}
-                    className="flex h-10 items-center justify-center rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-800 dark:text-slate-200 px-4 text-xs font-bold transition-all shadow-xs cursor-pointer"
-                  >
-                    <span>
-                      {isAr ? "إنشاء كارت للدفع" : "Order Payment Card"}
-                    </span>
-                  </button>
-                </div>
-              )}
+                )}
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* ── Payment Methods Grid ── */}
       {isLoading ? (
@@ -741,41 +790,42 @@ export default function PaymentMethodsSection({
       ) : (
         <div className="grid gap-4 md:grid-cols-2">
           {paymentMethods.map((method) => {
-            const isSelected = method.id === activePaymentMethodId;
             const prov = getProviderInfo(method.provider);
             const ProvLogo = prov.Logo;
             const customLink = getCustomMethodLink(method);
-            const isPrimaryNoSub = !hasPaymentPlus && isSelected;
-            const effectiveMethodLink = isPrimaryNoSub
-              ? getUnifiedPaymentLink()
-              : customLink;
+            const effectiveMethodLink = customLink;
+            const isSelected = method.id === activePaymentMethodId;
 
             return (
               <div
                 key={method.id}
-                className={`rounded-[22px] border bg-white p-4 text-end shadow-sm transition-all hover:shadow-md dark:bg-slate-950/45 sm:p-5 ltr:text-left flex flex-col justify-between ${
+                className={`rounded-[22px] border p-4 text-end shadow-sm transition-all hover:shadow-md dark:bg-slate-950/45 sm:p-5 ltr:text-left flex flex-col justify-between ${
                   isSelected
-                    ? "border-indigo-400 ring-2 ring-indigo-100 dark:border-indigo-600 dark:ring-indigo-950/60"
-                    : "border-slate-100 hover:border-slate-200 dark:border-slate-900 dark:hover:border-slate-800"
+                    ? "border-emerald-300 bg-emerald-50/30 dark:border-emerald-800/60 dark:bg-emerald-950/10 ring-1 ring-emerald-200/50 dark:ring-emerald-900/30"
+                    : "border-slate-100 hover:border-slate-200 dark:border-slate-900 dark:hover:border-slate-800 bg-white"
                 }`}
               >
-                {/* ── Top Header of Card: Status + Actions (تعديل + حذف) ── */}
+                {/* ── Top Header of Card: Provider Badge + Primary Badge + Actions ── */}
                 <div>
                   <div className="mb-3.5 flex items-center justify-between gap-2 border-b border-slate-100 pb-3 dark:border-slate-900">
-                    {/* Primary Badge or Select Button */}
-                    <div>
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span className="rounded-md bg-slate-100 px-2.5 py-1 text-[11px] font-bold text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+                        {prov[isAr ? "badge" : "nameEn"]}
+                      </span>
                       {isSelected ? (
-                        <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-1 text-[11px] font-black text-emerald-600 dark:bg-emerald-950/40 dark:text-emerald-400 border border-emerald-200/60 dark:border-emerald-900/40">
-                          <Check className="h-3 w-3" />
-                          <span>{isAr ? "الوسيلة الأساسية" : "Primary"}</span>
+                        <span className="flex items-center gap-1 rounded-md bg-emerald-100 px-2 py-0.5 text-[10px] font-black text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-400">
+                          <Star className="h-3 w-3 fill-current" />
+                          <span>{isAr ? "الأساسية" : "Primary"}</span>
                         </span>
                       ) : (
                         <button
                           type="button"
                           onClick={() => handleSelectActive(method.id)}
-                          className="text-[11px] font-bold text-slate-400 hover:text-indigo-600 dark:text-slate-500 dark:hover:text-indigo-400 cursor-pointer transition-colors"
+                          className="flex items-center gap-1 rounded-md border border-slate-200 bg-white hover:border-emerald-300 hover:bg-emerald-50 hover:text-emerald-700 px-2 py-0.5 text-[10px] font-bold text-slate-500 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400 dark:hover:border-emerald-900/50 dark:hover:bg-emerald-950/40 dark:hover:text-emerald-300 transition-all cursor-pointer"
+                          title={isAr ? "تحديد هذه الوسيلة كأساسية" : "Set as primary"}
                         >
-                          {isAr ? "تحديد كأساسية" : "Set as primary"}
+                          <Star className="h-3 w-3 text-slate-400 hover:text-emerald-600" />
+                          <span>{isAr ? "تعيين كأساسية" : "Set Primary"}</span>
                         </button>
                       )}
                     </div>
@@ -838,9 +888,6 @@ export default function PaymentMethodsSection({
                         <h3 className="truncate text-base font-black text-slate-900 dark:text-white">
                           {method.name}
                         </h3>
-                        <span className="shrink-0 rounded-md bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-600 dark:bg-slate-800 dark:text-slate-300">
-                          {prov[isAr ? "badge" : "nameEn"]}
-                        </span>
                       </div>
                     </div>
                   </div>
@@ -851,20 +898,9 @@ export default function PaymentMethodsSection({
                       <span className="text-[11px] font-bold text-indigo-700 dark:text-indigo-300 flex items-center gap-1.5">
                         <Globe className="w-3.5 h-3.5" />
                         <span>
-                          {isPrimaryNoSub
-                            ? (isAr
-                                ? "رابط thenith الأساسي المباشر"
-                                : "Thenith Primary Direct Link")
-                            : (isAr
-                                ? "رابط thenith المخصص"
-                                : "Thenith Dedicated Link")}
+                          {isAr ? "رابط thenith المخصص للمحفظة" : "Thenith Dedicated Link"}
                         </span>
                       </span>
-                      {isPrimaryNoSub && (
-                        <span className="text-[10px] font-bold bg-indigo-600 text-white px-2 py-0.5 rounded-full shadow-xs">
-                          {isAr ? "الرابط الأساسي" : "Primary Link"}
-                        </span>
-                      )}
                     </div>
                     <div className="flex items-center gap-1.5 bg-white/90 dark:bg-slate-900/80 rounded-lg px-2.5 py-1.5 border border-indigo-200/60 dark:border-indigo-900/50 overflow-hidden">
                       <Link2 className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
@@ -927,7 +963,7 @@ export default function PaymentMethodsSection({
                   )}
                 </div>
 
-                {/* ── زر إنشاء كارت دفع ── */}
+                {/* ── Order Card ── */}
                 <div className="pt-2.5 border-t border-slate-100 dark:border-slate-900 mt-2">
                   <button
                     type="button"
@@ -1299,6 +1335,305 @@ export default function PaymentMethodsSection({
                   </button>
                 </div>
               </form>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ── Modal 3: Payment Page Settings (إعدادات صفحة الدفع) ── */}
+      <AnimatePresence>
+        {isSettingsModalOpen && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-md"
+            onClick={() => setIsSettingsModalOpen(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0, y: 10 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.95, opacity: 0, y: 10 }}
+              transition={{ type: "spring", damping: 25, stiffness: 300 }}
+              onClick={(e) => e.stopPropagation()}
+              className="w-full max-w-lg overflow-hidden rounded-3xl border border-slate-200/80 bg-white shadow-2xl dark:border-slate-800 dark:bg-slate-950 flex flex-col"
+            >
+              {/* Header */}
+              <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4 dark:border-slate-800 shrink-0">
+                <div className="flex items-center gap-2.5">
+                  <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600 dark:bg-indigo-950/50 dark:text-indigo-400">
+                    <Settings className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-black text-slate-800 dark:text-white">
+                      {isAr ? "إعدادات صفحة الدفع" : "Payment Page Settings"}
+                    </h3>
+                    <p className="text-[11px] text-slate-400">
+                      {isAr
+                        ? "تخصيص مظهر صفحة عرض وسائل الدفع فقط"
+                        : "Customize the payment page appearance only"}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsSettingsModalOpen(false)}
+                  className="flex h-8 w-8 items-center justify-center rounded-full bg-slate-100 text-slate-500 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 cursor-pointer"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+
+              {/* Form Content */}
+              <div className="p-6 space-y-5 overflow-y-auto max-h-[80vh]">
+                {/* Avatar Upload */}
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-2">
+                    {isAr ? "صورة البروفايل لصفحة الدفع" : "Payment Page Avatar"}
+                  </label>
+                  <div className="flex items-center gap-4">
+                    <div className="relative h-16 w-16 shrink-0 rounded-2xl border-2 border-dashed border-slate-200 dark:border-slate-700 overflow-hidden bg-slate-50 dark:bg-slate-900 flex items-center justify-center">
+                      {isUploadingAvatar ? (
+                        <Loader2 className="h-6 w-6 animate-spin text-indigo-600" />
+                      ) : settingsForm.avatar ? (
+                        <img
+                          src={settingsForm.avatar}
+                          alt=""
+                          className="h-full w-full object-cover"
+                        />
+                      ) : (
+                        <ImageIcon className="h-6 w-6 text-slate-300 dark:text-slate-600" />
+                      )}
+                    </div>
+                    <div className="flex flex-col gap-1.5">
+                      <input
+                        ref={avatarInputRef}
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={async (e) => {
+                          const file = e.target.files?.[0];
+                          if (!file) return;
+                          if (file.size > 10 * 1024 * 1024) {
+                            toast.error(isAr ? "حجم الصورة يجب ألا يتجاوز 10 ميجابايت" : "Image size must be under 10MB");
+                            return;
+                          }
+                          const reader = new FileReader();
+                          reader.onload = async () => {
+                            try {
+                              setIsUploadingAvatar(true);
+                              const res = await uploadRoutes.uploadBase64("paymentAvatar", reader.result);
+                              if (res?.url) {
+                                setSettingsForm((prev) => ({ ...prev, avatar: res.url }));
+                                toast.success(isAr ? "تم رفع الصورة" : "Image uploaded");
+                              }
+                            } catch (err) {
+                              toast.error(isAr ? "فشل رفع الصورة" : "Upload failed");
+                            } finally {
+                              setIsUploadingAvatar(false);
+                            }
+                          };
+                          reader.readAsDataURL(file);
+                        }}
+                      />
+                      <button
+                        type="button"
+                        disabled={isUploadingAvatar}
+                        onClick={() => avatarInputRef.current?.click()}
+                        className="flex items-center gap-1.5 rounded-lg bg-indigo-50 px-3 py-1.5 text-xs font-bold text-indigo-600 hover:bg-indigo-100 dark:bg-indigo-950/50 dark:text-indigo-400 dark:hover:bg-indigo-900/60 transition-colors cursor-pointer disabled:opacity-50"
+                      >
+                        {isUploadingAvatar ? (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        ) : (
+                          <Upload className="h-3.5 w-3.5" />
+                        )}
+                        <span>{isUploadingAvatar ? (isAr ? "جاري الرفع..." : "Uploading...") : (isAr ? "رفع صورة" : "Upload")}</span>
+                      </button>
+                      {settingsForm.avatar && !isUploadingAvatar && (
+                        <button
+                          type="button"
+                          onClick={() => setSettingsForm((prev) => ({ ...prev, avatar: "" }))}
+                          className="text-[10px] font-bold text-rose-500 hover:text-rose-600 cursor-pointer"
+                        >
+                          {isAr ? "إزالة" : "Remove"}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Cover Image Upload */}
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-2">
+                    {isAr ? "صورة الغلاف لصفحة الدفع" : "Payment Page Cover Image"}
+                  </label>
+                  <div className="relative w-full h-28 rounded-xl border-2 border-dashed border-slate-200 dark:border-slate-700 overflow-hidden bg-slate-50 dark:bg-slate-900 flex items-center justify-center">
+                    {isUploadingCover ? (
+                      <Loader2 className="h-8 w-8 animate-spin text-indigo-600" />
+                    ) : settingsForm.coverImage ? (
+                      <img
+                        src={settingsForm.coverImage}
+                        alt=""
+                        className="h-full w-full object-cover"
+                      />
+                    ) : (
+                      <div className="text-center">
+                        <ImageIcon className="h-8 w-8 text-slate-300 dark:text-slate-600 mx-auto" />
+                        <p className="text-[10px] text-slate-400 mt-1">
+                          {isAr ? "صورة الغلاف" : "Cover Image"}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2 mt-2">
+                    <input
+                      ref={coverInputRef}
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={async (e) => {
+                        const file = e.target.files?.[0];
+                        if (!file) return;
+                        if (file.size > 10 * 1024 * 1024) {
+                          toast.error(isAr ? "حجم الصورة يجب ألا يتجاوز 10 ميجابايت" : "Image size must be under 10MB");
+                          return;
+                        }
+                        const reader = new FileReader();
+                        reader.onload = async () => {
+                          try {
+                            setIsUploadingCover(true);
+                            const res = await uploadRoutes.uploadBase64("paymentCover", reader.result);
+                            if (res?.url) {
+                              setSettingsForm((prev) => ({ ...prev, coverImage: res.url }));
+                              toast.success(isAr ? "تم رفع صورة الغلاف" : "Cover uploaded");
+                            }
+                          } catch (err) {
+                            toast.error(isAr ? "فشل رفع الصورة" : "Upload failed");
+                          } finally {
+                            setIsUploadingCover(false);
+                          }
+                        };
+                        reader.readAsDataURL(file);
+                      }}
+                    />
+                    <button
+                      type="button"
+                      disabled={isUploadingCover}
+                      onClick={() => coverInputRef.current?.click()}
+                      className="flex items-center gap-1.5 rounded-lg bg-indigo-50 px-3 py-1.5 text-xs font-bold text-indigo-600 hover:bg-indigo-100 dark:bg-indigo-950/50 dark:text-indigo-400 dark:hover:bg-indigo-900/60 transition-colors cursor-pointer disabled:opacity-50"
+                    >
+                      {isUploadingCover ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        <Upload className="h-3.5 w-3.5" />
+                      )}
+                      <span>{isUploadingCover ? (isAr ? "جاري الرفع..." : "Uploading...") : (isAr ? "رفع غلاف" : "Upload Cover")}</span>
+                    </button>
+                    {settingsForm.coverImage && !isUploadingCover && (
+                      <button
+                        type="button"
+                        onClick={() => setSettingsForm((prev) => ({ ...prev, coverImage: "" }))}
+                        className="text-[10px] font-bold text-rose-500 hover:text-rose-600 cursor-pointer"
+                      >
+                        {isAr ? "إزالة" : "Remove"}
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {/* Display Name */}
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
+                    {isAr ? "اسم العرض على صفحة الدفع" : "Display Name on Payment Page"}
+                  </label>
+                  <input
+                    type="text"
+                    value={settingsForm.displayName}
+                    onChange={(e) =>
+                      setSettingsForm((prev) => ({
+                        ...prev,
+                        displayName: e.target.value,
+                      }))
+                    }
+                    placeholder={isAr ? "اسم يظهر على صفحة الدفع" : "Name shown on payment page"}
+                    className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-sm font-semibold text-slate-900 placeholder:text-slate-400 transition-colors focus:border-indigo-500 focus:bg-white focus:outline-none dark:border-slate-800 dark:bg-slate-900 dark:text-white"
+                  />
+                </div>
+
+                {/* Description */}
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
+                    {isAr ? "وصف صفحة الدفع" : "Payment Page Description"}
+                  </label>
+                  <textarea
+                    value={settingsForm.description}
+                    onChange={(e) =>
+                      setSettingsForm((prev) => ({
+                        ...prev,
+                        description: e.target.value,
+                      }))
+                    }
+                    placeholder={isAr ? "وصف قصير يظهر على صفحة الدفع" : "Short description on payment page"}
+                    rows={3}
+                    className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-sm font-semibold text-slate-900 placeholder:text-slate-400 transition-colors focus:border-indigo-500 focus:bg-white focus:outline-none dark:border-slate-800 dark:bg-slate-900 dark:text-white resize-none"
+                  />
+                </div>
+
+                {/* Save & Cancel */}
+                <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100 dark:border-slate-800">
+                  <button
+                    type="button"
+                    onClick={() => setIsSettingsModalOpen(false)}
+                    className="rounded-xl px-4 py-2.5 text-xs font-bold text-slate-600 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+                  >
+                    {isAr ? "إلغاء" : "Cancel"}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={isSettingsSaving}
+                    onClick={async () => {
+                      try {
+                        setIsSettingsSaving(true);
+                        await updatePaymentPageSettings({
+                          avatar: settingsForm.avatar,
+                          coverImage: settingsForm.coverImage,
+                          displayName: settingsForm.displayName,
+                          description: settingsForm.description,
+                        });
+                        setPaymentPageSettings((prev) => ({
+                          ...prev,
+                          avatar: settingsForm.avatar,
+                          coverImage: settingsForm.coverImage,
+                          displayName: settingsForm.displayName,
+                          description: settingsForm.description,
+                        }));
+                        setIsSettingsModalOpen(false);
+                        toast.success(
+                          isAr
+                            ? "تم حفظ إعدادات صفحة الدفع بنجاح"
+                            : "Payment page settings saved"
+                        );
+                      } catch (err) {
+                        toast.error(
+                          isAr
+                            ? "حدث خطأ أثناء الحفظ"
+                            : "Failed to save settings"
+                        );
+                      } finally {
+                        setIsSettingsSaving(false);
+                      }
+                    }}
+                    className="flex items-center justify-center gap-1.5 rounded-xl bg-indigo-600 px-5 py-2.5 text-xs font-bold text-white hover:bg-indigo-700 transition-all disabled:opacity-50 shadow-sm cursor-pointer"
+                  >
+                    {isSettingsSaving ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Check className="h-4 w-4" />
+                    )}
+                    <span>{isAr ? "حفظ الإعدادات" : "Save Settings"}</span>
+                  </button>
+                </div>
+              </div>
             </motion.div>
           </motion.div>
         )}

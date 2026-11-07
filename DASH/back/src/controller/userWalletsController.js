@@ -22,6 +22,7 @@ export const DEFAULT_PANEL_CONFIG = {
       icon: "/wallets/vodafone-cash.png",
       placeholder: "https://...",
       color: "from-red-500 to-rose-600",
+      ussdCode: "*9*7#",
       enabled: true,
     },
     {
@@ -32,6 +33,7 @@ export const DEFAULT_PANEL_CONFIG = {
       icon: "/wallets/instapay.png",
       placeholder: "https://instapay.eg/...",
       color: "from-purple-600 to-indigo-600",
+      ussdCode: "",
       enabled: true,
     },
     {
@@ -42,6 +44,7 @@ export const DEFAULT_PANEL_CONFIG = {
       icon: "/wallets/orange-cash.png",
       placeholder: "https://...",
       color: "from-amber-500 to-orange-500",
+      ussdCode: "#7115#",
       enabled: true,
     },
     {
@@ -52,6 +55,7 @@ export const DEFAULT_PANEL_CONFIG = {
       icon: "/wallets/etisalat-cash.png",
       placeholder: "https://...",
       color: "from-red-600 to-rose-700",
+      ussdCode: "*777*1#",
       enabled: true,
     },
     {
@@ -62,6 +66,7 @@ export const DEFAULT_PANEL_CONFIG = {
       icon: "/wallets/we-pay.png",
       placeholder: "https://...",
       color: "from-purple-700 to-indigo-800",
+      ussdCode: "*7*2#",
       enabled: true,
     },
   ],

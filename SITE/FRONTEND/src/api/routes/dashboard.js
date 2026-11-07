@@ -59,6 +59,13 @@ export const dashboardRoutes = {
     request(`/dashboard/payment-methods/${encodeURIComponent(id)}`, {
       method: "DELETE",
     }),
+
+  // Payment Page Settings
+  updatePaymentPageSettings: (data) =>
+    request("/dashboard/payment-page-settings", {
+      method: "PUT",
+      data,
+    }),
 };
 
 export default dashboardRoutes;

@@ -241,6 +241,7 @@ const getPaymentMethods = asyncHandler(async (req, res) => {
         : null),
     panelConfig: panelSetting?.value || null,
     hasPaymentPlus,
+    paymentPageSettings: user.paymentPageSettings || null,
   });
 });
 
@@ -400,6 +401,31 @@ const deletePaymentMethod = asyncHandler(async (req, res) => {
   });
 });
 
+// ── PUT /api/dashboard/payment-page-settings ──────────────────────────────────
+const updatePaymentPageSettings = asyncHandler(async (req, res) => {
+  const { avatar, coverImage, displayName, description, isUnifiedHubEnabled } = req.body;
+  const user = req.user;
+
+  if (!user.paymentPageSettings) {
+    user.paymentPageSettings = {};
+  }
+
+  if (avatar !== undefined) user.paymentPageSettings.avatar = sanitizeUrl(avatar) || "";
+  if (coverImage !== undefined) user.paymentPageSettings.coverImage = sanitizeUrl(coverImage) || "";
+  if (displayName !== undefined) user.paymentPageSettings.displayName = String(displayName || "").trim().slice(0, 100);
+  if (description !== undefined) user.paymentPageSettings.description = String(description || "").trim().slice(0, 500);
+  if (isUnifiedHubEnabled !== undefined) user.paymentPageSettings.isUnifiedHubEnabled = Boolean(isUnifiedHubEnabled);
+
+  user.markModified("paymentPageSettings");
+  await user.save();
+
+  res.json({
+    success: true,
+    message: "تم حفظ إعدادات صفحة وسائل الدفع بنجاح",
+    paymentPageSettings: user.paymentPageSettings,
+  });
+});
+
 export default {
   streamNotifications,
   getDashboard,
@@ -413,4 +439,5 @@ export default {
   updatePaymentMethod,
   setActivePaymentMethod,
   deletePaymentMethod,
+  updatePaymentPageSettings,
 };

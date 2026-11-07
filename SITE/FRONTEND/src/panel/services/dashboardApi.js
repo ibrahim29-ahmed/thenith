@@ -80,6 +80,10 @@ export async function deletePaymentMethod(id) {
   return api.dashboard.deletePaymentMethod(id);
 }
 
+export async function updatePaymentPageSettings(data) {
+  return api.dashboard.updatePaymentPageSettings(data);
+}
+
 // ─── Billing ──────────────────────────────────────────────────────────────────
 
 export async function fetchSubscription() {

@@ -1,4 +1,6 @@
 import express from "express";
+import path from "path";
+import { fileURLToPath } from "url";
 import compression from "compression";
 import cookieParser from "cookie-parser";
 import cors from "cors";
@@ -38,6 +40,10 @@ import policyRoutes from "./routes/policyRoutes.js";
 import referralRoutes from "./routes/referralRoutes.js";
 
 export const app = express();
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const uploadsDir = path.resolve(__dirname, "../public/uploads");
+
 app.set("trust proxy", 1);
 
 // Private Network Access (PNA) header support for Chromium browsers

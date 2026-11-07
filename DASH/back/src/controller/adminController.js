@@ -1,4 +1,7 @@
 import crypto from "node:crypto";
+import fs from "fs";
+import path from "path";
+import { fileURLToPath } from "url";
 import jwt from "jsonwebtoken";
 import bcrypt from "bcryptjs";
 import User from "../models/User.js";
@@ -1153,12 +1156,75 @@ const deleteCard = async (req, res, next) => {
 
 // ── Upload ────────────────────────────────────────────────────────────────────
 
+const __ctrlFilename = fileURLToPath(import.meta.url);
+const __ctrlDirname = path.dirname(__ctrlFilename);
+const DASH_UPLOADS_DIR = path.resolve(__ctrlDirname, "../../public/uploads");
+const SITE_UPLOADS_DIR = path.resolve(__ctrlDirname, "../../../../SITE/FRONTEND/public/uploads");
+
+const saveLocally = (base64Data, folder) => {
+  if (!fs.existsSync(DASH_UPLOADS_DIR)) {
+    fs.mkdirSync(DASH_UPLOADS_DIR, { recursive: true });
+  }
+  if (!fs.existsSync(SITE_UPLOADS_DIR)) {
+    try {
+      fs.mkdirSync(SITE_UPLOADS_DIR, { recursive: true });
+    } catch {}
+  }
+
+  let mimeType = "image/png";
+  let ext = "png";
+  let base64Clean = base64Data;
+
+  const match = base64Data.match(/^data:(image\/[a-zA-Z0-9+.-]+);base64,/);
+  if (match) {
+    mimeType = match[1];
+    base64Clean = base64Data.slice(match[0].length);
+    if (mimeType.includes("jpeg") || mimeType.includes("jpg")) ext = "jpg";
+    else if (mimeType.includes("webp")) ext = "webp";
+    else if (mimeType.includes("gif")) ext = "gif";
+    else if (mimeType.includes("svg")) ext = "svg";
+    else if (mimeType.includes("png")) ext = "png";
+  }
+
+  const buffer = Buffer.from(base64Clean, "base64");
+  const safeFolder = (folder || "prod").replace(/[^a-zA-Z0-9_-]/g, "");
+  const filename = `${safeFolder}_${Date.now()}_${crypto.randomBytes(4).toString("hex")}.${ext}`;
+
+  fs.writeFileSync(path.join(DASH_UPLOADS_DIR, filename), buffer);
+
+  try {
+    fs.writeFileSync(path.join(SITE_UPLOADS_DIR, filename), buffer);
+  } catch {}
+
+  const port = process.env.PORT || 4001;
+  const baseUrl = process.env.APP_URL || `http://localhost:${port}`;
+  return `${baseUrl}/uploads/${filename}`;
+};
+
 const adminUpload = async (req, res, next) => {
   try {
     const { image, folder = "thenith_admin" } = req.body;
     if (!image) return res.status(400).json({ error: "Image is required" });
-    const result = await cloudinary.uploader.upload(image, { folder });
-    res.json({ url: result.secure_url });
+
+    // 1. Try Cloudinary if fully configured
+    if (
+      env.CLOUDINARY_CLOUD_NAME &&
+      env.CLOUDINARY_API_KEY &&
+      env.CLOUDINARY_API_SECRET
+    ) {
+      try {
+        const result = await cloudinary.uploader.upload(image, { folder });
+        if (result?.secure_url) {
+          return res.json({ url: result.secure_url });
+        }
+      } catch (cloudinaryErr) {
+        console.warn("Cloudinary upload failed, falling back to local storage:", cloudinaryErr.message);
+      }
+    }
+
+    // 2. Seamless local fallback
+    const localUrl = saveLocally(image, folder);
+    res.json({ url: localUrl });
   } catch (error) {
     next(error);
   }

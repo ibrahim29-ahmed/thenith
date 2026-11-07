@@ -393,16 +393,16 @@ export default function ProductsPage({ t, personal, onOrder, onOpenCart, onOpenC
 
       // ── CASE 1: UNIFIED PAYMENT PAGE CARD ──
       if (targetProvider === "unified" || productToAdd.sku === "TH-PAY-UNIFIED") {
-        // Check if user has payment plus plan
-        if (!userPaymentData.hasPaymentPlus) {
+        // Check if user has at least one configured payment method
+        if (!userPaymentData.methods || userPaymentData.methods.length === 0) {
           const result = await Swal.fire({
-            title: isArabic ? "تتطلب باقة Thenith Payment Plus" : "Requires Payment Plus Plan",
+            title: isArabic ? "بيانات وسائل الدفع غير مكتملة" : "Incomplete Payment Details",
             html: isArabic
-              ? "<p class='text-sm leading-relaxed text-slate-300'>كارت صفحة الدفع الموحدة مخصص لمشتركي باقة <strong>Thenith Payment Plus</strong>.<br/>يرجى ترقية باقتك لتفعيل الرابط الموحد والطلب.</p>"
-              : "<p class='text-sm leading-relaxed text-slate-300'>Unified payment card is exclusive to <strong>Thenith Payment Plus</strong> subscribers.<br/>Please upgrade your plan to activate and order.</p>",
+              ? "<p class='text-sm leading-relaxed text-slate-300'>لم تقم بإضافة أي وسيلة دفع بعد. يرجى إضافة وسائل الدفع أولاً ليتم ربط الكارت بها.</p>"
+              : "<p class='text-sm leading-relaxed text-slate-300'>Please add your payment methods first before ordering the card.</p>",
             icon: "warning",
             showCancelButton: true,
-            confirmButtonText: isArabic ? "تصفح الباقات والترقية" : "Browse Plans",
+            confirmButtonText: isArabic ? "تعديل المحافظ" : "Edit Wallets",
             cancelButtonText: isArabic ? "إلغاء" : "Cancel",
             confirmButtonColor: "#4f46e5",
             cancelButtonColor: "#334155",
@@ -411,29 +411,7 @@ export default function ProductsPage({ t, personal, onOrder, onOpenCart, onOpenC
           });
 
           if (result.isConfirmed) {
-            navigate("/u/subscriptions");
-          }
-          return false;
-        }
-
-        // Check if user has at least one configured payment method
-        if (!userPaymentData.methods || userPaymentData.methods.length === 0) {
-          const result = await Swal.fire({
-            title: isArabic ? "لا توجد وسائل دفع مضافة" : "No Payment Methods Added",
-            html: isArabic
-              ? "<p class='text-sm leading-relaxed text-slate-300'>يجب إضافة وسيلة دفع واحدة على الأقل في صفحة وسائل الدفع أولاً لتظهر في صفحتك الموحدة ويتم ربط الكارت بها.</p>"
-              : "<p class='text-sm leading-relaxed text-slate-300'>Please add at least one payment method first in your payment methods page.</p>",
-            icon: "info",
-            showCancelButton: true,
-            confirmButtonText: isArabic ? "إضافة وسائل الدفع الآن" : "Add Payment Methods",
-            cancelButtonText: isArabic ? "إلغاء" : "Cancel",
-            confirmButtonColor: "#10b981",
-            cancelButtonColor: "#334155",
-            background: "#0f172a",
-            color: "#fff",
-          });
-
-          if (result.isConfirmed) {
+            setSelectedProduct(null);
             navigate("/u/cards?sub=payment");
           }
           return false;
@@ -456,7 +434,7 @@ export default function ProductsPage({ t, personal, onOrder, onOpenCart, onOpenC
           isPaymentCard: true,
           walletProvider: "unified",
           walletName: isArabic
-            ? "صفحة الدفع الموحدة (Thenith Payment Plus)"
+            ? "صفحة الدفع الموحدة"
             : "Unified Payment Page",
           walletNumber: isArabic
             ? "صفحة موحدة تضم كافة الوسائل"
@@ -490,17 +468,29 @@ export default function ProductsPage({ t, personal, onOrder, onOpenCart, onOpenC
             m.name?.includes(provDisplayName)
         );
 
-        if (!matchedMethod) {
+        // Verify that wallet details are complete (accountName and walletNumber or link)
+        const hasNumber = Boolean(
+          matchedMethod?.walletNumber?.trim() ||
+            matchedMethod?.link?.trim() ||
+            walletNumberParam?.trim()
+        );
+        const hasAccountName = Boolean(
+          matchedMethod?.accountName?.trim() || accountNameParam?.trim()
+        );
+
+        if (!matchedMethod || !hasNumber || !hasAccountName) {
           const result = await Swal.fire({
             title: isArabic
-              ? "لم يتم إضافة وسيلة الدفع بعد"
-              : "Payment Method Not Added",
+              ? "بيانات المحفظة غير مكتملة"
+              : "Incomplete Wallet Details",
             html: isArabic
-              ? `<p class='text-sm leading-relaxed text-slate-300'>يجب إضافة محفظة <strong>${provDisplayName}</strong> أولاً في صفحة وسائل الدفع لتتم طباعتها وتفعيلها على الكارت الذكي.</p>`
-              : `<p class='text-sm leading-relaxed text-slate-300'>Please add <strong>${provDisplayName}</strong> in your payment methods page first.</p>`,
+              ? `<p class='text-sm leading-relaxed text-slate-300'>بيانات محفظة <strong>${provDisplayName}</strong> غير مكتملة. يرجى استكمال بيانات المحفظة (الاسم ورقم المحفظة) أولاً قبل طلب الكارت.</p>`
+              : `<p class='text-sm leading-relaxed text-slate-300'>Your <strong>${provDisplayName}</strong> wallet details are incomplete. Please complete them before ordering.</p>`,
             icon: "warning",
             showCancelButton: true,
-            confirmButtonText: isArabic ? "إضافة وسيلة الدفع الآن" : "Add Payment Method",
+            confirmButtonText: isArabic
+              ? "تعديل المحافظ"
+              : "Edit Wallets",
             cancelButtonText: isArabic ? "إلغاء" : "Cancel",
             confirmButtonColor: "#4f46e5",
             cancelButtonColor: "#334155",
@@ -509,42 +499,7 @@ export default function ProductsPage({ t, personal, onOrder, onOpenCart, onOpenC
           });
 
           if (result.isConfirmed) {
-            navigate("/u/cards?sub=payment");
-          }
-          return false;
-        }
-
-        // Verify that wallet details are complete (accountName and walletNumber or link)
-        const hasNumber = Boolean(
-          matchedMethod.walletNumber?.trim() ||
-            matchedMethod.link?.trim() ||
-            walletNumberParam?.trim()
-        );
-        const hasAccountName = Boolean(
-          matchedMethod.accountName?.trim() || accountNameParam?.trim()
-        );
-
-        if (!hasNumber || !hasAccountName) {
-          const result = await Swal.fire({
-            title: isArabic
-              ? "بيانات وسيلة الدفع غير مكتملة"
-              : "Incomplete Wallet Details",
-            html: isArabic
-              ? `<p class='text-sm leading-relaxed text-slate-300'>يرجى إكمال بيانات المحفظة لـ <strong>${provDisplayName}</strong> (اسم صاحب الحساب ورقم المحفظة) في صفحة وسائل الدفع قبل طلب الكارت الذكي ليتم برمجته وطباعته بشكل سليم.</p>`
-              : `<p class='text-sm leading-relaxed text-slate-300'>Please complete the wallet details (Account name and wallet number) in payment methods first.</p>`,
-            icon: "info",
-            showCancelButton: true,
-            confirmButtonText: isArabic
-              ? "إكمال البيانات في وسائل الدفع"
-              : "Complete Details",
-            cancelButtonText: isArabic ? "إلغاء" : "Cancel",
-            confirmButtonColor: "#10b981",
-            cancelButtonColor: "#334155",
-            background: "#0f172a",
-            color: "#fff",
-          });
-
-          if (result.isConfirmed) {
+            setSelectedProduct(null);
             navigate("/u/cards?sub=payment");
           }
           return false;
@@ -568,13 +523,7 @@ export default function ProductsPage({ t, personal, onOrder, onOpenCart, onOpenC
 
         let effectiveLink = targetLinkParam;
         if (!effectiveLink) {
-          if (isPrimaryNoSub) {
-            effectiveLink = `${origin}/pay/${identifier}`;
-          } else {
-            effectiveLink = `${origin}/m/${identifier}?pay=${encodeURIComponent(
-              slug
-            )}`;
-          }
+          effectiveLink = `${origin}/pay/${identifier}`;
         }
 
         customDesignPayload = {
@@ -1038,38 +987,6 @@ export default function ProductsPage({ t, personal, onOrder, onOpenCart, onOpenC
                           ? selectedProduct.description
                           : (selectedProduct.description?.[isArabic ? "ar" : "en"] || selectedProduct.description?.ar || "")}
                     </p>
-                  )}
-
-                  {(selectedProduct.category === "وسائل الدفع" ||
-                    selectedProduct.sku?.startsWith("TH-PAY-")) && (
-                    <div className="rounded-2xl border border-indigo-200/80 bg-indigo-50/60 dark:border-indigo-900/60 dark:bg-indigo-950/30 p-3.5 space-y-2 text-xs">
-                      <div className="flex items-center justify-between flex-wrap gap-2">
-                        <div className="flex items-center gap-2 font-black text-indigo-700 dark:text-indigo-300">
-                          <Sparkles className="w-4 h-4 text-indigo-500 shrink-0" />
-                          <span>
-                            {isArabic
-                              ? "الربط التلقائي والبرمجة الذكية"
-                              : "Smart NFC Direct Linking"}
-                          </span>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setSelectedProduct(null);
-                            navigate("/u/cards?sub=payment");
-                          }}
-                          className="inline-flex items-center gap-1.5 text-[11px] font-bold text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 bg-white dark:bg-slate-900 px-2.5 py-1 rounded-xl border border-indigo-200 dark:border-indigo-800 shadow-2xs cursor-pointer transition-colors"
-                        >
-                          <Wallet className="w-3.5 h-3.5" />
-                          <span>{isArabic ? "صفحة وسائل الدفع" : "Payment Methods"}</span>
-                        </button>
-                      </div>
-                      <p className="text-[11px] leading-relaxed text-slate-600 dark:text-slate-400">
-                        {isArabic
-                          ? "يتم ربط وبرمجة هذا الكارت الذكي ببياناتك المسجلة في صفحة وسائل الدفع للتحويل المباشر لعملائك بلمسة واحدة."
-                          : "This card will be configured with your wallet data for instant contactless transfers."}
-                      </p>
-                    </div>
                   )}
                 </div>
 

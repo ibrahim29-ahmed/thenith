@@ -17,6 +17,7 @@ const {
   updatePaymentMethod,
   setActivePaymentMethod,
   deletePaymentMethod,
+  updatePaymentPageSettings,
 } = _dashboardController7485;
 
 const router = Router();
@@ -42,5 +43,6 @@ router.post("/payment-methods", createPaymentMethod);
 router.put("/payment-methods/:id", updatePaymentMethod);
 router.patch("/payment-methods/:id/active", setActivePaymentMethod);
 router.delete("/payment-methods/:id", deletePaymentMethod);
+router.put("/payment-page-settings", updatePaymentPageSettings);
 
 export default router;

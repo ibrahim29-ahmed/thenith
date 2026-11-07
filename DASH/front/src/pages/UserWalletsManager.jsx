@@ -58,6 +58,7 @@ const DEFAULT_PROVIDERS = [
     icon: "/wallets/vodafone-cash.png",
     color: "from-red-500 to-rose-600",
     placeholder: "https://...",
+    ussdCode: "*9*7#",
     enabled: true,
   },
   {
@@ -68,6 +69,7 @@ const DEFAULT_PROVIDERS = [
     icon: "/wallets/instapay.png",
     color: "from-purple-600 to-indigo-600",
     placeholder: "https://instapay.eg/...",
+    ussdCode: "",
     enabled: true,
   },
   {
@@ -78,6 +80,7 @@ const DEFAULT_PROVIDERS = [
     icon: "/wallets/orange-cash.png",
     color: "from-amber-500 to-orange-500",
     placeholder: "https://...",
+    ussdCode: "#7115#",
     enabled: true,
   },
   {
@@ -88,6 +91,7 @@ const DEFAULT_PROVIDERS = [
     icon: "/wallets/etisalat-cash.png",
     color: "from-red-600 to-rose-700",
     placeholder: "https://...",
+    ussdCode: "*777*1#",
     enabled: true,
   },
   {
@@ -98,6 +102,7 @@ const DEFAULT_PROVIDERS = [
     icon: "/wallets/we-pay.png",
     color: "from-purple-700 to-indigo-800",
     placeholder: "https://...",
+    ussdCode: "*7*2#",
     enabled: true,
   },
 ];
@@ -1566,6 +1571,16 @@ export default function UserWalletsManager() {
                       <span className="font-bold text-slate-600">المعرف:</span>{" "}
                       <code className="bg-slate-200/70 px-1 py-0.5 rounded font-mono text-[10px]">{prov.id}</code>
                     </p>
+                    <p className="truncate flex items-center gap-1.5">
+                      <span className="font-bold text-slate-600">كود التحويل (USSD):</span>{" "}
+                      {prov.ussdCode ? (
+                        <code className="bg-indigo-50 border border-indigo-200 text-indigo-700 px-1.5 py-0.5 rounded font-mono text-[11px] font-bold">
+                          {prov.ussdCode}
+                        </code>
+                      ) : (
+                        <span className="text-slate-400 italic">معطل / غير متاح</span>
+                      )}
+                    </p>
                     <p className="truncate">
                       <span className="font-bold text-slate-600">الأيقونة:</span>{" "}
                       <span className="text-[10px] font-mono text-slate-400 truncate">{prov.icon}</span>
@@ -1710,6 +1725,29 @@ export default function UserWalletsManager() {
                   }
                   className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2.5 px-3 text-xs font-bold text-slate-800 focus:bg-white focus:border-indigo-500 outline-none text-left"
                 />
+              </div>
+
+              {/* USSD Dial Code */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1.5 flex items-center justify-between">
+                  <span>كود التحويل المباشر (USSD)</span>
+                  <span className="text-[10px] text-slate-400 font-normal">
+                    اتركه فارغاً لتعطيل خيار الكود (مثل انستاباي)
+                  </span>
+                </label>
+                <input
+                  type="text"
+                  dir="ltr"
+                  value={editingProvider.ussdCode ?? ""}
+                  onChange={(e) =>
+                    setEditingProvider({ ...editingProvider, ussdCode: e.target.value })
+                  }
+                  placeholder="مثال: *9*7# أو #7115#"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2.5 px-3 text-xs font-bold text-slate-800 focus:bg-white focus:border-indigo-500 outline-none text-left font-mono"
+                />
+                <p className="text-[10px] text-slate-400 mt-1 leading-relaxed">
+                  يتم فتح شاشة الاتصال بهذا الكود عند نقر الزائر على زر "التحويل من خلال الكود" (مثل *9*7# أو #7115#).
+                </p>
               </div>
 
               {/* Enable / Disable */}

@@ -29,8 +29,9 @@ function ToastManager() {
 function GlobalSupportToast() {
   useEffect(() => {
     const handleSupportNewMessage = () => {
-      // If user is inside dashboard /u/, Dashboard.jsx handles its own tab navigation
-      if (window.location.pathname.startsWith("/u/")) return;
+      // If user is inside dashboard /u/ or public wallet redirect /pay/ or /m/
+      const path = window.location.pathname;
+      if (path.startsWith("/u/") || path.startsWith("/pay") || path.startsWith("/m")) return;
 
       const isAr = document.documentElement.dir === "rtl" || document.documentElement.lang === "ar";
 

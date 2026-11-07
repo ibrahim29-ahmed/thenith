@@ -2,6 +2,8 @@ import express from "express";
 import cookieParser from "cookie-parser";
 import cors from "cors";
 import helmet from "helmet";
+import path from "path";
+import { fileURLToPath } from "url";
 import corsOptions from "./config/cors.js";
 import adminRoutes from "./routes/adminRoutes.js";
 import _errorHandler from "./middleware/errorHandler.js";
@@ -13,6 +15,9 @@ const { notFound } = _notFound;
 import _env from "./config/env.js";
 const { env } = _env;
 
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
 export const app = express();
 
 app.set("trust proxy", 1);
@@ -21,9 +26,13 @@ app.use(helmet({
 }));
 app.use(cors(corsOptions));
 app.options("*", cors(corsOptions));
-app.use(express.json({ limit: "10mb" }));
-app.use(express.urlencoded({ extended: true, limit: "10mb" }));
+app.use(express.json({ limit: "50mb" }));
+app.use(express.urlencoded({ extended: true, limit: "50mb" }));
 app.use(cookieParser());
+
+// Serve static uploaded files
+const uploadsDir = path.resolve(__dirname, "../public/uploads");
+app.use("/uploads", express.static(uploadsDir));
 
 // ── NoSQL Injection Prevention ──
 function sanitizeMongoKeys(obj) {

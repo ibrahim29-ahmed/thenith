@@ -575,6 +575,8 @@ export default function SupportWidget({ embedded = false, isVisible = true }) {
         !location.pathname.startsWith("/login") &&
         !location.pathname.startsWith("/signup") &&
         !(location.pathname === "/p" || location.pathname.startsWith("/p/")) &&
+        !location.pathname.startsWith("/pay") &&
+        !location.pathname.startsWith("/m") &&
         !location.pathname.startsWith("/admin") && (
           <button
             onClick={() => {

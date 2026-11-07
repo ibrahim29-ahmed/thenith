@@ -97,6 +97,13 @@ const userSchema = new mongoose.Schema(
       type: String,
       default: null,
     },
+    paymentPageSettings: {
+      avatar: { type: String, default: "" },
+      coverImage: { type: String, default: "" },
+      displayName: { type: String, default: "" },
+      description: { type: String, default: "" },
+      isUnifiedHubEnabled: { type: Boolean, default: false },
+    },
   },
   { timestamps: true },
 );
