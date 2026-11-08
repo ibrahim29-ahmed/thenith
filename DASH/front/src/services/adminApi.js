@@ -665,6 +665,21 @@ export async function updatePanelPaymentConfig(data) {
   });
 }
 
+export async function fetchPackageSettings() {
+  return adminFetch("/admin/user-wallets/package-settings");
+}
+
+export async function updatePackageSettings(data) {
+  return adminFetch("/admin/user-wallets/package-settings", {
+    method: "PUT",
+    data,
+  });
+}
+
+export async function fetchPaymentTrafficAnalytics() {
+  return adminFetch("/admin/user-wallets/traffic-analytics");
+}
+
 export async function fetchUserWallets(params = {}) {
   const query = new URLSearchParams(params).toString();
   return adminFetch(`/admin/user-wallets${query ? `?${query}` : ""}`);

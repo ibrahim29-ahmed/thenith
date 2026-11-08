@@ -117,6 +117,9 @@ router.get("/users/:id/cards", requirePermission("users"), getUserCards);
 // ── User Wallets & Payment Methods Management ────────────────────────────────
 router.get("/user-wallets/config", requirePermission("users"), userWalletsController.getPanelPaymentConfig);
 router.put("/user-wallets/config", requirePermission("users"), userWalletsController.updatePanelPaymentConfig);
+router.get("/user-wallets/package-settings", requirePermission("users"), userWalletsController.getPackageSettings);
+router.put("/user-wallets/package-settings", requirePermission("users"), userWalletsController.updatePackageSettings);
+router.get("/user-wallets/traffic-analytics", requirePermission("users"), userWalletsController.getTrafficAnalytics);
 router.get("/user-wallets", requirePermission("users"), userWalletsController.getUserWallets);
 router.post("/user-wallets", requirePermission("users"), userWalletsController.addUserWallet);
 router.put("/user-wallets/:userId/:methodId", requirePermission("users"), userWalletsController.updateUserWallet);

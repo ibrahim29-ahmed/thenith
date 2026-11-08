@@ -2,6 +2,13 @@ import mongoose from "mongoose";
 
 const couponSchema = new mongoose.Schema(
   {
+    couponId: {
+      type: String,
+      trim: true,
+      default: function () {
+        return "CPN-" + Math.random().toString(36).substring(2, 8).toUpperCase();
+      },
+    },
     code: {
       type: String,
       required: true,
@@ -32,6 +39,11 @@ const couponSchema = new mongoose.Schema(
     appliesTo: {
       type: String,
       enum: ["all", "store", "subscriptions"],
+      default: "all",
+    },
+    applicablePlan: {
+      type: String,
+      enum: ["all", "pro", "payment_plus"],
       default: "all",
     },
     applyMode: {
@@ -74,7 +86,6 @@ couponSchema.methods.calculateDiscount = function (
   if (this.expiresAt && new Date() > new Date(this.expiresAt)) return 0;
   if (this.maxUses !== null && this.usedCount >= this.maxUses) return 0;
   if (this.appliesTo !== "all" && this.appliesTo !== target) return 0;
-  if (userId && this.usedBy && this.usedBy.some(id => id.toString() === userId.toString())) return 0;
 
   let val = this.discountValue;
   if (billingPeriod === "monthly" && this.monthlyDiscountValue != null) {
@@ -90,6 +101,7 @@ couponSchema.methods.calculateDiscount = function (
 };
 
 couponSchema.index({ isActive: 1, appliesTo: 1, expiresAt: 1 });
+couponSchema.index({ couponId: 1 });
 
 const Coupon = mongoose.model("Coupon", couponSchema);
 

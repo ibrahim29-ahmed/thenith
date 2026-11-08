@@ -1,5 +1,7 @@
 import User from "../models/User.js";
 import Setting from "../models/Setting.js";
+import Subscription from "../models/Subscription.js";
+import Plan from "../models/Plan.js";
 import _asyncHandler5014 from "../util/asyncHandler.js";
 const { asyncHandler } = _asyncHandler5014;
 import _httpError2650 from "../util/httpError.js";
@@ -341,6 +343,177 @@ export const deleteUserWallet = asyncHandler(async (req, res) => {
   res.json({
     success: true,
     message: "Wallet deleted successfully",
+  });
+});
+
+// ── GET /api/admin/user-wallets/package-settings ──────────────────────────────
+export const getPackageSettings = asyncHandler(async (req, res) => {
+  const dayRateSetting = await Setting.findOne({ key: "payment_plus_day_rate" }).lean();
+  const dayRate = typeof dayRateSetting?.value?.dayRate === "number" ? dayRateSetting.value.dayRate : 3;
+
+  // Fetch all users who have or have had Payment Plus
+  const users = await User.find({
+    $or: [
+      { paymentPlusActive: true },
+      { hasStandalonePaymentPlus: true },
+      { paymentPlusStartedAt: { $exists: true, $ne: null } },
+      { "paymentMethods.0": { $exists: true } },
+    ],
+  })
+    .select("_id name email phone username publicId createdAt paymentPlusActive hasStandalonePaymentPlus paymentPlusStartedAt paymentPlusExpiresAt paymentPlusBillingPeriod paymentPageSettings")
+    .lean();
+
+  const plusPlan = await Plan.findOne({ key: "payment_plus" }).lean();
+  const proPlan = await Plan.findOne({ key: "pro" }).lean();
+
+  const userIds = users.map((u) => u._id);
+  const userSubs = await Subscription.find({
+    userId: { $in: userIds },
+    status: { $in: ["active", "trialing"] },
+  }).lean();
+
+  const usersList = users.map((u) => {
+    // Find all active subs for user sorted by startedAt descending
+    const subsForUser = userSubs
+      .filter((s) => s.userId.toString() === u._id.toString())
+      .sort((a, b) => new Date(b.startedAt || 0) - new Date(a.startedAt || 0));
+
+    const activeSub = subsForUser[0];
+    const isPro = Boolean(activeSub && proPlan && activeSub.planId.toString() === proPlan._id.toString());
+    const plusSub = subsForUser.find((s) => plusPlan && s.planId.toString() === plusPlan._id.toString());
+    const isPlusSub = Boolean(plusSub);
+
+    const isActive = Boolean(u.paymentPlusActive || isPlusSub || (isPro && u.paymentPlusActive !== false));
+    const startedAt = plusSub?.startedAt || u.paymentPlusStartedAt || (isActive ? activeSub?.startedAt : null) || null;
+
+    let daysUsed = 0;
+    if (startedAt && isActive) {
+      const diffMs = Math.max(0, Date.now() - new Date(startedAt).getTime());
+      daysUsed = Math.max(1, Math.floor(diffMs / (1000 * 60 * 60 * 24)));
+    }
+
+    const upgradeDiscount = daysUsed * dayRate;
+
+    let status = "inactive";
+    if (isPro) {
+      status = "upgraded_to_pro";
+    } else if (isActive) {
+      status = "active";
+    }
+
+    return {
+      id: u._id,
+      name: u.name || "بدون اسم",
+      email: u.email,
+      phone: u.phone,
+      username: u.username,
+      publicId: u.publicId,
+      startedAt,
+      daysUsed,
+      upgradeDiscount,
+      status,
+      isPro,
+      hasStandalonePaymentPlus: Boolean(u.hasStandalonePaymentPlus),
+      billingPeriod: u.paymentPlusBillingPeriod || activeSub?.billingPeriod || "monthly",
+    };
+  });
+
+  // Sort by daysUsed descending
+  usersList.sort((a, b) => b.daysUsed - a.daysUsed);
+
+  res.json({
+    success: true,
+    dayRate,
+    users: usersList,
+    stats: {
+      totalUsersWithPlus: usersList.length,
+      activeUsers: usersList.filter((u) => u.status === "active").length,
+      upgradedUsers: usersList.filter((u) => u.status === "upgraded_to_pro").length,
+      totalDiscountGiven: usersList.reduce((acc, u) => acc + (u.upgradeDiscount || 0), 0),
+    },
+  });
+});
+
+// ── PUT /api/admin/user-wallets/package-settings ──────────────────────────────
+export const updatePackageSettings = asyncHandler(async (req, res) => {
+  const { dayRate } = req.body;
+  const numRate = Number(dayRate);
+  if (isNaN(numRate) || numRate < 0) {
+    throw new HttpError(400, "سعر اليوم يجب أن يكون رقماً صالحاً (أكبر من أو يساوي 0)");
+  }
+
+  await Setting.findOneAndUpdate(
+    { key: "payment_plus_day_rate" },
+    { value: { dayRate: numRate } },
+    { upsert: true, new: true }
+  );
+
+  res.json({
+    success: true,
+    message: "تم حفظ سعر اليوم بنجاح",
+    dayRate: numRate,
+  });
+});
+
+// ── GET /api/admin/user-wallets/traffic-analytics ──────────────────────────────
+export const getTrafficAnalytics = asyncHandler(async (req, res) => {
+  const users = await User.find({
+    $or: [
+      { "paymentMethods.0": { $exists: true } },
+      { "paymentPageSettings.analytics.totalVisits": { $gt: 0 } },
+      { paymentPlusActive: true },
+    ],
+  })
+    .select("_id name email phone username publicId avatar paymentMethods paymentPageSettings createdAt")
+    .lean();
+
+  let totalCardVisits = 0;
+  let totalDirectVisits = 0;
+  let totalVisits = 0;
+
+  const userStats = users.map((u) => {
+    const analytics = u.paymentPageSettings?.analytics || {};
+    const cardVisits = analytics.cardVisits || 0;
+    const directVisits = analytics.directVisits || 0;
+    const userTotal = analytics.totalVisits || (cardVisits + directVisits);
+    const lastVisitAt = analytics.lastVisitAt || null;
+
+    totalCardVisits += cardVisits;
+    totalDirectVisits += directVisits;
+    totalVisits += userTotal;
+
+    const identifier = u.username || u.publicId || u._id.toString();
+
+    return {
+      userId: u._id,
+      name: u.name || "مستخدم",
+      email: u.email,
+      phone: u.phone,
+      username: u.username,
+      publicId: u.publicId,
+      avatar: u.paymentPageSettings?.avatar || u.avatar || "",
+      paymentUrl: `/pay/${identifier}`,
+      cardVisits,
+      directVisits,
+      totalVisits: userTotal,
+      lastVisitAt,
+      walletsCount: (u.paymentMethods || []).length,
+    };
+  });
+
+  // Sort by highest traffic first
+  userStats.sort((a, b) => b.totalVisits - a.totalVisits);
+
+  res.json({
+    success: true,
+    summary: {
+      totalVisits,
+      totalCardVisits,
+      totalDirectVisits,
+      usersCount: userStats.length,
+      activeLinksCount: userStats.filter((u) => u.walletsCount > 0).length,
+    },
+    users: userStats,
   });
 });
 

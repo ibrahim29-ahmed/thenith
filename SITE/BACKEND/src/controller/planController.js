@@ -3,6 +3,8 @@ const { asyncHandler  } = _asyncHandler9213;
 import Plan from "../models/Plan.js";
 
 import Coupon from "../models/Coupon.js";
+import User from "../models/User.js";
+import { getCouponUsageId, hasUsedCouponId } from "../util/couponUsage.js";
 
 // Invalidate cache helper
 export function invalidatePlansCache() {
@@ -33,11 +35,11 @@ const getPlans = asyncHandler(async (_request, response) => {
   ]);
 
   let effectiveCoupon = activeCoupon;
-  if (_request.user && effectiveCoupon?.usedBy) {
-    const hasUsed = effectiveCoupon.usedBy.some(
-      (id) => id.toString() === _request.user._id.toString()
-    );
-    if (hasUsed) effectiveCoupon = null;
+  if (_request.user && effectiveCoupon) {
+    const cTrackId = getCouponUsageId(effectiveCoupon);
+    const userDoc = await User.findById(_request.user._id).select("usedCouponIds");
+    const hasUsedThisId = hasUsedCouponId(userDoc?.usedCouponIds, cTrackId);
+    if (hasUsedThisId) effectiveCoupon = null;
   }
 
   // Apply active coupon logic to calculate final prices for each plan
@@ -47,7 +49,13 @@ const getPlans = asyncHandler(async (_request, response) => {
     let canApplyMonthly = false;
     let canApplyYearly = false;
 
-    if (effectiveCoupon) {
+    const couponMatchesPlan =
+      effectiveCoupon &&
+      (!effectiveCoupon.applicablePlan ||
+        effectiveCoupon.applicablePlan === "all" ||
+        effectiveCoupon.applicablePlan === plan.key);
+
+    if (couponMatchesPlan) {
       if (effectiveCoupon.appliesTo === "subscriptions" || effectiveCoupon.appliesTo === "all") {
         if (effectiveCoupon.monthlyDiscountValue != null) {
           monthlyDiscountVal = effectiveCoupon.monthlyDiscountValue;

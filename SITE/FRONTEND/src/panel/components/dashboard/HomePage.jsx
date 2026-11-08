@@ -29,6 +29,7 @@ import {
   ChevronDown,
   CreditCard,
   Layers,
+  ArrowRight,
 } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { QRCodeSVG } from "qrcode.react";
@@ -129,6 +130,7 @@ export default function HomePage({
   activeCardLink,
   activeCardId,
   onUpgrade,
+  user,
 }) {
   const canViewAdvancedAnalytics = canAccess(entitlements, "advancedAnalytics");
   const isFreePlan = !canViewAdvancedAnalytics;

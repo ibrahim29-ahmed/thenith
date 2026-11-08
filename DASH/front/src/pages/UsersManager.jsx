@@ -24,6 +24,7 @@ import {
   BarChart3,
   CheckCircle2,
   AtSign,
+  Sparkles,
 } from "lucide-react";
 import {
   fetchUsers,
@@ -1157,6 +1158,29 @@ export default function UsersManager() {
                 {planModal.planKey === "pro" ? "Pro" : "مجاني"}
               </Badge>
             </div>
+
+            {/* If user has Payment Plus active: Show usage days & upgrade discount */}
+            {planModal.hasPaymentPlus && (
+              <div className="flex items-center justify-between p-3.5 rounded-xl bg-emerald-50 border border-emerald-200">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-lg bg-emerald-100 flex items-center justify-center text-emerald-700">
+                    <Sparkles className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <p className="text-xs font-bold text-emerald-950">أيام استخدام باقة المدفوعات:</p>
+                    <p className="text-xs text-emerald-700 font-medium">
+                      {planModal.paymentPlusDaysUsed || 1} يوم
+                    </p>
+                  </div>
+                </div>
+                <div className="text-end">
+                  <p className="text-[11px] font-bold text-emerald-800">خصم ترقية Pro المكتسب:</p>
+                  <p className="text-sm font-black text-emerald-700">
+                    -{planModal.upgradeDiscount || 3} ج.م
+                  </p>
+                </div>
+              </div>
+            )}
 
             {/* Core Plans: Free / Pro */}
             <div>

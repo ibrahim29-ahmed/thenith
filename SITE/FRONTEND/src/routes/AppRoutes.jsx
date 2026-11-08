@@ -123,11 +123,14 @@ function ReferralQueryInterceptor() {
 
 export default function AppRoutes() {
   const { isAuthenticated, isInitializing } = useAuth();
+  const location = useLocation();
+  const isStandalonePaymentRoute =
+    location.pathname === "/payment" || location.pathname.startsWith("/payment/");
 
   return (
     <>
       <ReferralQueryInterceptor />
-      {!isInitializing && !isAuthenticated && <MainNavbar />}
+      {!isStandalonePaymentRoute && <MainNavbar />}
       <Suspense fallback={<div className="flex min-h-screen items-center justify-center bg-slate-50 text-slate-700 dark:bg-slate-950 dark:text-slate-200"><span className="h-10 w-10 animate-spin rounded-full border-4 border-indigo-200 border-t-indigo-600" /></div>}>
         <Routes>
           <Route
@@ -176,10 +179,10 @@ export default function AppRoutes() {
           <Route path="/ref/:code" element={<ReferralRedirectPage />} />
 
           {/* Direct Wallet Payment Shortlinks & Unified Pay Hub */}
-          <Route path="/m/*" element={<WalletRedirectPage />} />
           <Route path="/m/:identifier" element={<WalletRedirectPage />} />
-          <Route path="/pay/*" element={<WalletRedirectPage />} />
+          <Route path="/m/*" element={<WalletRedirectPage />} />
           <Route path="/pay/:identifier" element={<WalletRedirectPage />} />
+          <Route path="/pay/*" element={<WalletRedirectPage />} />
 
           {/* Static Smart Card URL Resolver: https://thenith.com/c/{publicId} */}
           <Route path="/c/:publicId" element={<PublicCardResolverPage />} />
@@ -211,11 +214,7 @@ export default function AppRoutes() {
           <Route path="/policies" element={<Navigate to="/policies/privacy-policy" replace />} />
           <Route
             path="/"
-            element={
-              <GuestRoute>
-                <LandingPage />
-              </GuestRoute>
-            }
+            element={isAuthenticated ? <Navigate to="/u" replace /> : <LandingPage />}
           />
           <Route path="*" element={<NotFoundPage code="routeNotFound" />} />
         </Routes>

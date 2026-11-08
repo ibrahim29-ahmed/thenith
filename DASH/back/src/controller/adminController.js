@@ -799,6 +799,8 @@ const getUsers = async (req, res, next) => {
       .lean();
     const total = await User.countDocuments(query);
     const plans = await Plan.find().lean();
+    const dayRateSetting = await Setting.findOne({ key: "payment_plus_day_rate" }).lean();
+    const dayRate = typeof dayRateSetting?.value?.dayRate === "number" ? dayRateSetting.value.dayRate : 3;
 
     const result = await Promise.all(
       users.map(async (user) => {
@@ -825,6 +827,17 @@ const getUsers = async (req, res, next) => {
           hasPaymentPlus = Boolean(plusSub || isPro || user.paymentPlusActive);
         }
 
+        let paymentPlusDaysUsed = 0;
+        let upgradeDiscount = 0;
+        if (hasPaymentPlus) {
+          const start = plusSub?.startedAt || user.paymentPlusStartedAt || user.createdAt;
+          if (start) {
+            const diffMs = Math.max(0, Date.now() - new Date(start).getTime());
+            paymentPlusDaysUsed = Math.max(1, Math.floor(diffMs / (1000 * 60 * 60 * 24)));
+            upgradeDiscount = paymentPlusDaysUsed * dayRate;
+          }
+        }
+
         const plan = proSub?.planId || plans.find((p) => p.key === "free");
         return {
           id: user._id,
@@ -839,6 +852,8 @@ const getUsers = async (req, res, next) => {
           planKey: plan?.key || "free",
           planName: plan?.name || "Free",
           hasPaymentPlus,
+          paymentPlusDaysUsed,
+          upgradeDiscount,
           subscriptionId: proSub?._id || plusSub?._id || null,
           isActive: user.isActive !== false,
           isEmailVerified: user.isEmailVerified,
@@ -1746,12 +1761,14 @@ const getCoupons = async (req, res, next) => {
 const createCoupon = async (req, res, next) => {
   try {
     const {
+      couponId,
       code,
       discountType,
       discountValue,
       monthlyDiscountValue,
       yearlyDiscountValue,
       appliesTo,
+      applicablePlan,
       applyMode,
       maxUses,
       expiresAt,
@@ -1764,15 +1781,24 @@ const createCoupon = async (req, res, next) => {
     const existing = await Coupon.findOne({ code: code.toUpperCase() });
     if (existing)
       return res.status(409).json({ error: "هذا الكود موجود بالفعل" });
+
+    const finalCouponId = (couponId && String(couponId).trim())
+      ? String(couponId).trim()
+      : ("CPN-" + Math.random().toString(36).substring(2, 8).toUpperCase());
+
+    const parsedMaxUses = (maxUses === "" || maxUses === null || maxUses === undefined || Number(maxUses) <= 0) ? null : Number(maxUses);
+
     const coupon = await Coupon.create({
-      code,
+      couponId: finalCouponId,
+      code: code.toUpperCase().trim(),
       discountType,
       discountValue,
       monthlyDiscountValue,
       yearlyDiscountValue,
       appliesTo,
+      applicablePlan: applicablePlan || "all",
       applyMode: applyMode || "code",
-      maxUses,
+      maxUses: parsedMaxUses,
       expiresAt,
       isActive,
     });
@@ -1785,12 +1811,14 @@ const createCoupon = async (req, res, next) => {
 const updateCoupon = async (req, res, next) => {
   try {
     const {
+      couponId,
       code,
       discountType,
       discountValue,
       monthlyDiscountValue,
       yearlyDiscountValue,
       appliesTo,
+      applicablePlan,
       applyMode,
       maxUses,
       expiresAt,
@@ -1804,23 +1832,41 @@ const updateCoupon = async (req, res, next) => {
       if (existing)
         return res.status(409).json({ error: "هذا الكود مستخدم في كوبون آخر" });
     }
+
+    const oldCoupon = await Coupon.findById(req.params.id);
+    if (!oldCoupon) return res.status(404).json({ error: "الكوبون غير موجود" });
+
+    const parsedMaxUses = (maxUses === "" || maxUses === null || maxUses === undefined || Number(maxUses) <= 0) ? null : Number(maxUses);
+
+    const updateFields = {
+      ...(code ? { code: code.toUpperCase().trim() } : {}),
+      discountType,
+      discountValue,
+      monthlyDiscountValue,
+      yearlyDiscountValue,
+      appliesTo,
+      applicablePlan: applicablePlan || "all",
+      applyMode: applyMode || "code",
+      maxUses: parsedMaxUses,
+      expiresAt,
+      isActive,
+    };
+
+    if (couponId !== undefined) {
+      const newCId = String(couponId).trim();
+      updateFields.couponId = newCId;
+      if (newCId !== oldCoupon.couponId) {
+        // عند تغيير الـ ID من قبل الأدمن، يتم إعادة تصفير سجل المستهلكين وعداد الاستخدام لبدء دورة جديدة
+        updateFields.usedBy = [];
+        updateFields.usedCount = 0;
+      }
+    }
+
     const coupon = await Coupon.findByIdAndUpdate(
       req.params.id,
-      {
-        code,
-        discountType,
-        discountValue,
-        monthlyDiscountValue,
-        yearlyDiscountValue,
-        appliesTo,
-        applyMode: applyMode || "code",
-        maxUses,
-        expiresAt,
-        isActive,
-      },
+      { $set: updateFields },
       { new: true },
     );
-    if (!coupon) return res.status(404).json({ error: "الكوبون غير موجود" });
     res.json(coupon);
   } catch (error) {
     next(error);

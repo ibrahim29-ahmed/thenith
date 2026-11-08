@@ -36,14 +36,21 @@ function ConfirmModal({ message, onConfirm, onCancel, loading }) {
   );
 }
 
-function CouponForm({ initial, onSave, onCancel, saving, error }) {
-  const [form, setForm] = useState(initial ? { ...initial, applyMode: initial.applyMode || "code" } : {
+function CouponForm({ initial, onSave, onCancel, saving, error, existingCouponIds = [] }) {
+  const getInitialCouponId = (init) => {
+    if (!init) return "";
+    return init.couponId || (init._id ? "CPN-" + String(init._id).slice(-6).toUpperCase() : "");
+  };
+
+  const [form, setForm] = useState(initial ? { ...initial, couponId: getInitialCouponId(initial), applyMode: initial.applyMode || "code", applicablePlan: initial.applicablePlan || "all" } : {
+    couponId: "",
     code: "",
     discountType: "percentage",
     discountValue: "",
     monthlyDiscountValue: "",
     yearlyDiscountValue: "",
     appliesTo: "all",
+    applicablePlan: "all",
     applyMode: "code",
     maxUses: "", // empty means unlimited
     expiresAt: "",
@@ -53,7 +60,9 @@ function CouponForm({ initial, onSave, onCancel, saving, error }) {
   const handleSubmit = () => {
     const data = { ...form };
     data.code = data.code.toUpperCase().trim();
+    data.couponId = data.couponId ? data.couponId.trim() : "";
     data.applyMode = form.applyMode || "code";
+    data.applicablePlan = form.applicablePlan || "all";
 
     const numDiscountValue = data.discountValue === "" ? null : Number(data.discountValue);
     const numMonthly = (data.monthlyDiscountValue === "" || data.monthlyDiscountValue === null) ? null : Number(data.monthlyDiscountValue);
@@ -73,7 +82,7 @@ function CouponForm({ initial, onSave, onCancel, saving, error }) {
       data.discountValue = 0;
     }
 
-    if (data.maxUses === "") data.maxUses = null;
+    if (data.maxUses === "" || data.maxUses === null || Number(data.maxUses) <= 0) data.maxUses = null;
     else data.maxUses = Number(data.maxUses);
 
     if (data.expiresAt === "") data.expiresAt = null;
@@ -92,7 +101,10 @@ function CouponForm({ initial, onSave, onCancel, saving, error }) {
       setForm(f => ({
         ...f,
         ...initial,
+        couponId: getInitialCouponId(initial),
+        applicablePlan: initial.applicablePlan || "all",
         applyMode: initial.applyMode || "code",
+        maxUses: (initial.maxUses == null || Number(initial.maxUses) <= 0) ? "" : String(initial.maxUses),
         expiresAt: initial.expiresAt ? formatDateForInput(initial.expiresAt) : ""
       }));
     }
@@ -101,12 +113,41 @@ function CouponForm({ initial, onSave, onCancel, saving, error }) {
   return (
     <div className="space-y-6">
       <div className="space-y-4">
-        <div className="space-y-1.5">
-          <label className="text-sm font-bold text-slate-700">كود الخصم (Promo Code)</label>
-          <input type="text" value={form.code} onChange={(e) => setForm({ ...form, code: e.target.value.toUpperCase() })}
-            placeholder="مثال: BLACKFRIDAY50"
-            className="w-full border border-slate-200 rounded-xl px-4 py-2 text-sm focus:ring-2 focus:ring-indigo-500 outline-none font-mono font-bold" />
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="space-y-1.5">
+            <label className="text-sm font-bold text-slate-700">كود الخصم (Promo Code)</label>
+            <input
+              type="text"
+              value={form.code}
+              onChange={(e) => setForm({ ...form, code: e.target.value.toUpperCase() })}
+              placeholder="مثال: BLACKFRIDAY50"
+              className="w-full border border-slate-200 rounded-xl px-4 py-2 text-sm focus:ring-2 focus:ring-indigo-500 outline-none font-mono font-bold"
+            />
+          </div>
+
+          <div className="space-y-1.5">
+            <label className="text-sm font-bold text-slate-700 flex items-center justify-between">
+              <span>معرف الكوبون (Coupon ID)</span>
+              <span className="text-[10px] text-indigo-600 font-bold">خاص بالأدمن</span>
+            </label>
+            <input
+              type="text"
+              list="existing-coupon-ids"
+              value={form.couponId}
+              onChange={(e) => setForm({ ...form, couponId: e.target.value })}
+              placeholder="مثال: CPN-01 (اختر من القائمة أو اكتب جديد)"
+              className="w-full border border-slate-200 rounded-xl px-4 py-2 text-sm focus:ring-2 focus:ring-indigo-500 outline-none font-mono font-bold bg-slate-50 text-indigo-900"
+            />
+            <datalist id="existing-coupon-ids">
+              {existingCouponIds.map((id) => (
+                <option key={id} value={id} />
+              ))}
+            </datalist>
+          </div>
         </div>
+        <p className="text-[11px] text-slate-400 bg-slate-50 p-2.5 rounded-xl border border-slate-100">
+          💡 <strong>ملاحظة للمُعرّف:</strong> هذا الـ ID هو الذي يحدد ما إذا كان حساب المستخدم قد استهلك الكوبون من قبل أم لا. عند تغييرك للـ ID هنا، سيتمكن أي مستخدم استخدم الكوبون سابقاً من استخدامه مرة أخرى.
+        </p>
 
         <div className="grid grid-cols-2 gap-4">
           <div className="space-y-1.5">
@@ -146,6 +187,27 @@ function CouponForm({ initial, onSave, onCancel, saving, error }) {
             <option value="subscriptions">الاشتراكات فقط (الباقات)</option>
           </select>
         </div>
+
+        {(form.appliesTo === "subscriptions" || form.appliesTo === "all") && (
+          <div className="space-y-1.5 bg-indigo-50/40 p-3.5 rounded-xl border border-indigo-100">
+            <label className="text-sm font-bold text-slate-800 flex items-center justify-between">
+              <span>الباقة المستهدفة للخصم</span>
+              <span className="text-[11px] text-indigo-600 font-bold">تحديد الباقة</span>
+            </label>
+            <select
+              value={form.applicablePlan || "all"}
+              onChange={(e) => setForm({ ...form, applicablePlan: e.target.value })}
+              className="w-full border border-slate-200 rounded-xl px-4 py-2 text-sm focus:ring-2 focus:ring-indigo-500 outline-none bg-white font-medium"
+            >
+              <option value="all">جميع الباقات (All Plans)</option>
+              <option value="pro">باقة Pro فقط</option>
+              <option value="payment_plus">باقة المدفوعات Payment Plus فقط</option>
+            </select>
+            <p className="text-[11px] text-slate-500">
+              يمكنك قصر تفعيل هذا الكوبون على باقة محددة دون غيرها، أو تطبيقه على جميع الباقات.
+            </p>
+          </div>
+        )}
 
         <div className="space-y-1.5">
           <label className="text-sm font-bold text-slate-700">طريقة تطبيق الكوبون</label>
@@ -332,6 +394,7 @@ export default function CouponsManager() {
               <thead>
                 <tr className="text-xs font-bold text-slate-500 uppercase border-b border-slate-100 bg-slate-50/50">
                   <th className="py-3 px-5">الكود</th>
+                  <th className="py-3 px-5">المعرّف (ID)</th>
                   <th className="py-3 px-5">الخصم</th>
                   <th className="py-3 px-5">الاستخدامات</th>
                   <th className="py-3 px-5">ينطبق على</th>
@@ -351,6 +414,11 @@ export default function CouponsManager() {
                     <tr key={c._id} className="hover:bg-slate-50/50 transition-colors group">
                       <td className="py-4 px-5">
                         <span className="font-mono font-black text-slate-800 bg-slate-100 px-3 py-1.5 rounded-lg border border-slate-200">{c.code}</span>
+                      </td>
+                      <td className="py-4 px-5">
+                        <span className="font-mono text-xs font-bold text-indigo-700 bg-indigo-50 px-2.5 py-1 rounded-md border border-indigo-200">
+                          {c.couponId || (c._id ? `CPN-${String(c._id).slice(-6).toUpperCase()}` : "—")}
+                        </span>
                       </td>
                       <td className="py-4 px-5">
                         {(() => {
@@ -405,9 +473,16 @@ export default function CouponsManager() {
                         <p className="font-bold text-slate-700">{c.usedCount} <span className="text-slate-400 font-normal">/ {c.maxUses === null ? "غير محدود" : c.maxUses}</span></p>
                       </td>
                       <td className="py-4 px-5">
-                        <span className="text-xs font-bold text-slate-600 bg-slate-100 px-2 py-1 rounded-md">
-                          {c.appliesTo === "all" ? "الكل" : c.appliesTo === "store" ? "المتجر" : "الاشتراكات"}
-                        </span>
+                        <div className="flex flex-col gap-1 items-start">
+                          <span className="text-xs font-bold text-slate-600 bg-slate-100 px-2 py-0.5 rounded-md">
+                            {c.appliesTo === "all" ? "الكل" : c.appliesTo === "store" ? "المتجر" : "الاشتراكات"}
+                          </span>
+                          {c.applicablePlan && c.applicablePlan !== "all" && (
+                            <span className="text-[11px] font-bold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-200">
+                              {c.applicablePlan === "pro" ? "باقة Pro" : c.applicablePlan === "payment_plus" ? "باقة Payment Plus" : c.applicablePlan}
+                            </span>
+                          )}
+                        </div>
                       </td>
                       <td className="py-4 px-5">
                         {c.applyMode === "auto" ? (
@@ -459,13 +534,26 @@ export default function CouponsManager() {
 
       {addModal && (
         <Modal title="إضافة كوبون جديد" onClose={() => setAddModal(false)}>
-          <CouponForm onSave={handleCreate} onCancel={() => setAddModal(false)} saving={actionLoading} error={formError} />
+          <CouponForm
+            onSave={handleCreate}
+            onCancel={() => setAddModal(false)}
+            saving={actionLoading}
+            error={formError}
+            existingCouponIds={Array.from(new Set((coupons || []).map((c) => c.couponId).filter(Boolean)))}
+          />
         </Modal>
       )}
 
       {editModal && (
         <Modal title="تعديل بيانات الكوبون" onClose={() => setEditModal(null)}>
-          <CouponForm initial={editModal} onSave={handleUpdate} onCancel={() => setEditModal(null)} saving={actionLoading} error={formError} />
+          <CouponForm
+            initial={editModal}
+            onSave={handleUpdate}
+            onCancel={() => setEditModal(null)}
+            saving={actionLoading}
+            error={formError}
+            existingCouponIds={Array.from(new Set((coupons || []).map((c) => c.couponId).filter(Boolean)))}
+          />
         </Modal>
       )}
 

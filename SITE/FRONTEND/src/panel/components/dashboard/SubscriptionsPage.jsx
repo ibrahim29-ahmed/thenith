@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import {
   Check,
   ArrowRight,
@@ -9,10 +9,14 @@ import {
   BadgeCheck,
   Calendar,
   AlertCircle,
+  AlertTriangle,
   XCircle,
   ShieldCheck,
   Clock,
   ArrowLeft,
+  Tag,
+  Sparkles,
+  X,
 } from "lucide-react";
 import apiClient from "../../../api/client.js";
 import { getAccessToken } from "../../services/authApi.js";
@@ -47,6 +51,12 @@ export default function SubscriptionsPage({
   const [loading, setLoading] = useState(true);
   const [showAllFeatures, setShowAllFeatures] = useState(false);
   const [expandedFeatures, setExpandedFeatures] = useState({});
+  const [expandedSubDetails, setExpandedSubDetails] = useState({});
+  const [openCouponPlanKey, setOpenCouponPlanKey] = useState(null);
+  const [couponInputs, setCouponInputs] = useState({});
+  const [appliedCoupons, setAppliedCoupons] = useState({});
+  const [couponLoadingPlanKey, setCouponLoadingPlanKey] = useState(null);
+  const [couponCardMessages, setCouponCardMessages] = useState({});
   const [subscribing, setSubscribing] = useState(false);
   const [subscribingPlanKey, setSubscribingPlanKey] = useState(null);
   const [selectedPlanForCheckout, setSelectedPlanForCheckout] = useState(null);
@@ -69,6 +79,7 @@ export default function SubscriptionsPage({
   }, [initialUser, initialOwner, authUser]);
   const [cancelling, setCancelling] = useState(false);
   const [showCancelConfirm, setShowCancelConfirm] = useState(false);
+  const [showSwitchPeriodConfirm, setShowSwitchPeriodConfirm] = useState(null);
   const [cancelMessage, setCancelMessage] = useState(null);
   const [showProfileModal, setShowProfileModal] = useState(false);
 
@@ -219,7 +230,71 @@ export default function SubscriptionsPage({
       });
   };
 
-  const getPlanPricing = (plan) => {
+  const handleApplyCardCoupon = async (plan) => {
+    const code = (couponInputs[plan.key] || "").trim();
+    if (!code) return;
+    setCouponLoadingPlanKey(plan.key);
+    setCouponCardMessages((prev) => ({ ...prev, [plan.key]: null }));
+
+    try {
+      const period = isAnnual ? "yearly" : "monthly";
+      const { data } = await apiClient.post("/subscription/validate-coupon", {
+        planId: plan._id,
+        billingPeriod: period,
+        couponCode: code,
+      });
+
+      if (data?.isValid) {
+        setAppliedCoupons((prev) => ({
+          ...prev,
+          [plan.key]: {
+            code: data.code || code,
+            result: data,
+          },
+        }));
+        setCouponCardMessages((prev) => ({
+          ...prev,
+          [plan.key]: {
+            type: "success",
+            text: isArabic ? "تم تطبيق الكود بنجاح!" : "Coupon applied!",
+          },
+        }));
+        toast.success(isArabic ? "تم تطبيق الكود بنجاح" : "Coupon applied successfully");
+      } else {
+        setCouponCardMessages((prev) => ({
+          ...prev,
+          [plan.key]: {
+            type: "error",
+            text: data?.message || (isArabic ? "كود غير صالح" : "Invalid coupon"),
+          },
+        }));
+        toast.error(data?.message || (isArabic ? "كود الخصم غير صالح" : "Invalid coupon code"));
+      }
+    } catch (err) {
+      setCouponCardMessages((prev) => ({
+        ...prev,
+        [plan.key]: {
+          type: "error",
+          text: err.response?.data?.message || err.message,
+        },
+      }));
+    } finally {
+      setCouponLoadingPlanKey(null);
+    }
+  };
+
+  const handleRemoveCardCoupon = (planKey) => {
+    setAppliedCoupons((prev) => {
+      const copy = { ...prev };
+      delete copy[planKey];
+      return copy;
+    });
+    setCouponInputs((prev) => ({ ...prev, [planKey]: "" }));
+    setCouponCardMessages((prev) => ({ ...prev, [planKey]: null }));
+    setOpenCouponPlanKey(null);
+  };
+
+  const getPlanPricing = (plan, customIsAnnual = undefined) => {
     if (!plan) {
       return {
         originalPrice: 0,
@@ -227,35 +302,58 @@ export default function SubscriptionsPage({
         discountAmount: 0,
         appliedDiscountVal: 0,
         discountType: "percentage",
+        upgradeDiscountAmount: 0,
+        ppDaysUsed: 0,
       };
     }
-    const originalPrice = isAnnual ? (plan.prices?.yearly || 0) : (plan.prices?.monthly || 0);
+    const annual = customIsAnnual !== undefined ? customIsAnnual : isAnnual;
+    const billingKey = annual ? "yearly" : "monthly";
+    const serverPrice = plan.calculatedPrice?.[billingKey];
+    const originalPrice = Number(serverPrice?.originalPrice ?? (annual ? plan.prices?.yearly : plan.prices?.monthly) ?? 0);
+    // A card-specific coupon only affects its own plan. The main coupon applies
+    // to Pro, which is the plan it is validated against.
+    const planCoupon = appliedCoupons[plan.key] || (plan.key === "pro" ? appliedCoupon : null);
 
-    if (appliedCoupon?.result) {
-      const discVal = appliedCoupon.result.appliedDiscountVal || 0;
-      if (discVal > 0) {
-        const discountAmount = Math.round((originalPrice * discVal) / 100);
-        return {
-          originalPrice,
-          finalPrice: Math.max(0, originalPrice - discountAmount),
-          discountAmount,
-          appliedDiscountVal: discVal,
-          discountType: "percentage",
-        };
-      }
+    let discountAmount = Number(serverPrice?.discountAmount || 0);
+    let appliedDiscountVal = Number(serverPrice?.appliedDiscountVal || 0);
+    let discountType = serverPrice?.discountType || "percentage";
+    let couponFinalPrice = Math.max(0, originalPrice - discountAmount);
+
+    if (planCoupon?.result) {
+      discountAmount = Number(planCoupon.result.discountAmount || 0);
+      appliedDiscountVal = Number(planCoupon.result.appliedDiscountVal || 0);
+      discountType = planCoupon.result.discountType || "percentage";
+      couponFinalPrice = Number.isFinite(Number(planCoupon.result.finalPrice))
+        ? Number(planCoupon.result.finalPrice)
+        : Math.max(0, originalPrice - discountAmount);
     }
 
-    if (plan.calculatedPrice) {
-      const cp = isAnnual ? plan.calculatedPrice.yearly : plan.calculatedPrice.monthly;
-      if (cp) return cp;
+    // Upgrade discount from Payment Plus to Pro:
+    let upgradeDiscountAmount = 0;
+    let ppDaysUsed = 0;
+    const isProPlan = plan.key === "pro";
+    const isAlreadyPro = Boolean(
+      userSubscription?.activeSubscriptions?.pro ||
+      userSubscription?.isPro ||
+      (userSubscription?.plan === "pro" && (userSubscription?.status === "active" || userSubscription?.status === "trialing"))
+    );
+
+    if (isProPlan && !isAlreadyPro && isPaymentPlusActive) {
+      const ppDetails = userSubscription?.paymentPlusDetails;
+      ppDaysUsed = ppDetails?.daysUsed || 0;
+      upgradeDiscountAmount = ppDetails?.upgradeDiscount || (ppDaysUsed * 3);
     }
+
+    const finalPrice = Math.max(0, couponFinalPrice - upgradeDiscountAmount);
 
     return {
       originalPrice,
-      finalPrice: originalPrice,
-      discountAmount: 0,
-      appliedDiscountVal: 0,
-      discountType: "percentage",
+      finalPrice,
+      discountAmount,
+      appliedDiscountVal,
+      discountType,
+      upgradeDiscountAmount,
+      ppDaysUsed,
     };
   };
 
@@ -424,19 +522,49 @@ export default function SubscriptionsPage({
       : null;
 
   const isPaymentPlusActive = Boolean(
-    currentUser?.paymentPlusActive ||
-    userSubscription?.paymentPlusActive ||
-    userSubscription?.hasPaymentPlus ||
-    (userSubscription?.plan === "payment_plus" &&
-      (userSubscription?.status === "active" || userSubscription?.status === "trialing"))
+    userSubscription
+      ? userSubscription.paymentPlusActive || userSubscription.hasPaymentPlus
+      : (currentUser?.paymentPlusActive || currentUser?.hasPaymentPlus)
   );
 
-  const isCurrentSubscribed =
-    (userSubscription?.plan === proPlan?.key &&
-      (userSubscription?.status === "active" ||
-        userSubscription?.status === "trialing")) ||
-    (proPlan?.key === "payment_plus" && isPaymentPlusActive);
-  const isPro = isCurrentSubscribed;
+  const isPro = Boolean(
+    userSubscription
+      ? userSubscription.isPro || (userSubscription.plan === "pro" && (userSubscription.status === "active" || userSubscription.status === "trialing"))
+      : (currentUser?.isPro || currentUser?.plan === "pro")
+  );
+
+  const checkIsSubscribed = (plan) => {
+    if (!plan) return false;
+    if (plan.key === "payment_plus") {
+      // Standalone Payment Plus subscription only
+      if (userSubscription) {
+        return Boolean(
+          userSubscription.activeSubscriptions?.payment_plus ||
+          (userSubscription.plan === "payment_plus" &&
+            (userSubscription.status === "active" || userSubscription.status === "trialing")) ||
+          (userSubscription.hasStandalonePaymentPlus && userSubscription.paymentPlusActive)
+        );
+      }
+      return Boolean(currentUser?.hasStandalonePaymentPlus && currentUser?.paymentPlusActive);
+    }
+    if (plan.key === "pro") {
+      if (userSubscription) {
+        return Boolean(
+          userSubscription.activeSubscriptions?.pro ||
+          userSubscription.isPro ||
+          (userSubscription.plan === "pro" &&
+            (userSubscription.status === "active" || userSubscription.status === "trialing"))
+        );
+      }
+      return Boolean(currentUser?.isPro || currentUser?.plan === "pro");
+    }
+    return Boolean(
+      userSubscription?.plan === plan.key &&
+      (userSubscription?.status === "active" || userSubscription?.status === "trialing")
+    );
+  };
+
+  const isCurrentSubscribed = checkIsSubscribed(proPlan);
 
   const getDaysLeft = () => {
     if (typeof userSubscription?.daysRemaining === "number") {
@@ -449,6 +577,9 @@ export default function SubscriptionsPage({
 
   const daysLeft = getDaysLeft();
   const isExpiringSoon = isCurrentSubscribed && daysLeft !== null && daysLeft <= 3;
+  const hasOpenPlanDetails =
+    Object.values(expandedFeatures).some(Boolean) ||
+    Object.values(expandedSubDetails).some(Boolean);
 
   const formatDate = (dateStr) => {
     if (!dateStr) return isArabic ? "غير محدد" : "N/A";
@@ -460,18 +591,18 @@ export default function SubscriptionsPage({
     });
   };
 
-  const proceedToCheckout = async (targetPlan, targetUser = currentUser) => {
+  const proceedToCheckout = async (targetPlan, targetUser = currentUser, overridePeriod = null) => {
     const plan = targetPlan || displayPlans[0] || proPlan;
     if (!plan) return;
     const planName = typeof plan.name === "object"
       ? (plan.name[isArabic ? "ar" : "en"] || plan.name.ar || plan.name.en || plan.name)
       : plan.name;
 
-    const period = isAnnual ? "yearly" : "monthly";
-    const pricing = getPlanPricing(plan);
+    const period = overridePeriod || (isAnnual ? "yearly" : "monthly");
+    const pricing = getPlanPricing(plan, period === "yearly");
     const price = pricing.finalPrice;
 
-    const effectiveCoupon = appliedCoupon?.code || activeCoupon?.code;
+    const effectiveCoupon = appliedCoupons[plan.key]?.code || appliedCoupon?.code || activeCoupon?.code;
     const isSpecialCoupon =
       effectiveCoupon === "خصم التجديد المكتسب" ||
       effectiveCoupon === "Earned Renewal Discount" ||
@@ -489,6 +620,7 @@ export default function SubscriptionsPage({
           couponCode: cleanCouponCode,
           applyReferralDiscount: appliedCoupon?.isReferral ? true : undefined,
           referralRewardId: appliedCoupon?.referralRewardId || undefined,
+          applyUpgradeDiscount: pricing.upgradeDiscountAmount > 0 ? true : undefined,
         };
         const { data } = await apiClient.post("/payment/subscription", payload);
         if (data?.success) {
@@ -515,6 +647,10 @@ export default function SubscriptionsPage({
       renew: isExpiringSoon ? "true" : "false",
     });
 
+    if (pricing.upgradeDiscountAmount > 0) {
+      params.append("applyUpgradeDiscount", "true");
+    }
+
     if (cleanCouponCode) {
       params.append("couponCode", cleanCouponCode);
     }
@@ -531,6 +667,29 @@ export default function SubscriptionsPage({
   const handleSubscribe = async (targetPlan) => {
     const plan = targetPlan || displayPlans[0] || proPlan;
     if (!plan) return;
+
+    // Check if user is currently active on monthly subscription and switching to yearly
+    const planKey = plan.key;
+    const planSubDetails =
+      planKey === "pro"
+        ? userSubscription?.activeSubscriptions?.pro
+        : (userSubscription?.activeSubscriptions?.payment_plus || userSubscription?.paymentPlusDetails);
+    const existingBillingPeriod = planSubDetails?.billingPeriod || userSubscription?.billingPeriod;
+    const isSubscribedToPlan = Boolean(
+      (planKey === "pro" && userSubscription?.isPro) ||
+      (planKey === "payment_plus" && (userSubscription?.paymentPlusActive || userSubscription?.hasStandalonePaymentPlus))
+    );
+
+    const targetPeriod = isAnnual ? "yearly" : "monthly";
+    if (isSubscribedToPlan && existingBillingPeriod === "monthly" && targetPeriod === "yearly") {
+      setShowSwitchPeriodConfirm({
+        plan,
+        fromPeriod: "monthly",
+        toPeriod: "yearly",
+      });
+      return;
+    }
+
     const pricing = getPlanPricing(plan);
 
     // 100% Free / Full Discount: Proceed immediately without phone or payment gateway prompt
@@ -581,13 +740,14 @@ export default function SubscriptionsPage({
   };
 
 
-  const handleCancelSubscription = async () => {
+  const handleCancelSubscription = async (targetPlan) => {
+    const planKey = targetPlan?.key || (typeof showCancelConfirm === "string" ? showCancelConfirm : undefined);
     setCancelling(true);
     try {
       const token = getAccessToken();
       const { data } = await apiClient.post(
         "/subscription/cancel",
-        {},
+        { planKey },
         {
           headers: {
             Authorization: `Bearer ${token}`,
@@ -597,18 +757,35 @@ export default function SubscriptionsPage({
 
       if (data.success) {
         setUserSubscription(data.state || null);
-        setCurrentUser((prev) => ({
-          ...(prev || {}),
-          paymentPlusActive: false,
-        }));
-        setCancelMessage({
-          type: "success",
-          text: t("cancelledSuccessfully"),
-        });
-        setShowCancelConfirm(false);
+        if (data.state) {
+          setCurrentUser((prev) => ({
+            ...(prev || {}),
+            paymentPlusActive: Boolean(data.state.paymentPlusActive),
+            hasStandalonePaymentPlus: Boolean(data.state.hasStandalonePaymentPlus),
+            isPro: Boolean(data.state.isPro),
+          }));
+        } else {
+          setCurrentUser((prev) => ({
+            ...(prev || {}),
+            paymentPlusActive: false,
+            hasStandalonePaymentPlus: false,
+          }));
+        }
+
+        try {
+          const stored = JSON.parse(localStorage.getItem("user") || "{}");
+          if (stored && stored._id) {
+            stored.paymentPlusActive = Boolean(data.state?.paymentPlusActive);
+            stored.hasStandalonePaymentPlus = Boolean(data.state?.hasStandalonePaymentPlus);
+            stored.isPro = Boolean(data.state?.isPro);
+            localStorage.setItem("user", JSON.stringify(stored));
+          }
+        } catch {}
+
+        setShowCancelConfirm(null);
+        toast.success(data.message || (isArabic ? "تم إلغاء الاشتراك بنجاح" : "Subscription cancelled successfully"));
         window.dispatchEvent(new CustomEvent("thenith_profile_sync"));
         window.dispatchEvent(new CustomEvent("thenith_realtime_sync"));
-        // Notify bell notifications
         window.dispatchEvent(
           new CustomEvent("dashboard-action", {
             detail: {
@@ -623,12 +800,59 @@ export default function SubscriptionsPage({
         throw new Error(data.message || "فشل إلغاء الاشتراك");
       }
     } catch (err) {
-      setCancelMessage({
-        type: "error",
-        text:
-          err.message ||
-          (isArabic ? "حدث خطأ أثناء إلغاء الاشتراك" : "Failed to cancel"),
-      });
+      toast.error(err.response?.data?.message || err.message || (isArabic ? "حدث خطأ أثناء إلغاء الاشتراك" : "Failed to cancel"));
+    } finally {
+      setCancelling(false);
+    }
+  };
+
+  const handleConfirmSwitchPeriod = async () => {
+    if (!showSwitchPeriodConfirm) return;
+    const { plan, fromPeriod, toPeriod } = showSwitchPeriodConfirm;
+    setCancelling(true);
+    try {
+      const token = getAccessToken();
+      const { data } = await apiClient.post(
+        "/subscription/cancel",
+        {
+          planKey: plan.key,
+          reason: `تغيير فترة الاشتراك من ${fromPeriod === "monthly" ? "شهري" : "سنوي"} إلى ${toPeriod === "yearly" ? "سنوي" : "شهري"}`,
+        },
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        },
+      );
+
+      if (data?.success) {
+        setUserSubscription(data.state || null);
+        if (data.state) {
+          setCurrentUser((prev) => ({
+            ...(prev || {}),
+            paymentPlusActive: Boolean(data.state.paymentPlusActive),
+            hasStandalonePaymentPlus: Boolean(data.state.hasStandalonePaymentPlus),
+            isPro: Boolean(data.state.isPro),
+          }));
+        }
+
+        const targetPeriod = toPeriod;
+        setShowSwitchPeriodConfirm(null);
+        toast.success(
+          isArabic
+            ? `تم إلغاء الاشتراك ${fromPeriod === "monthly" ? "الشهري" : "السنوي"}، جاري توجيهك لصفحة الدفع...`
+            : "Subscription updated, redirecting to payment..."
+        );
+        proceedToCheckout(plan, currentUser, targetPeriod);
+      } else {
+        throw new Error(data?.message || "فشل تغيير الاشتراك");
+      }
+    } catch (err) {
+      toast.error(
+        err.response?.data?.message ||
+        err.message ||
+        (isArabic ? "حدث خطأ أثناء تغيير الاشتراك" : "Failed to change subscription")
+      );
     } finally {
       setCancelling(false);
     }
@@ -722,63 +946,6 @@ export default function SubscriptionsPage({
                 }}
               />
             </div>
-
-            {/* Global Coupon Code Input */}
-            <div className="mt-4 w-full max-w-[340px]">
-              <div className="flex items-center gap-2">
-                <input
-                  type="text"
-                  value={
-                    appliedCoupon
-                      ? appliedCoupon.isReferral
-                        ? `${isArabic ? "خصم الإحالة / التجديد" : "Discount"} (${appliedCoupon?.result?.appliedDiscountVal || 10}%)`
-                        : appliedCoupon.code
-                      : couponInput
-                  }
-                  onChange={(e) => {
-                    setCouponInput(e.target.value);
-                    if (couponMessage) setCouponMessage(null);
-                  }}
-                  placeholder="هل لديك كوبون خصم؟"
-                  disabled={couponLoading || !!appliedCoupon}
-                  className="flex-1 bg-slate-900/60 dark:bg-slate-900 border border-slate-700/60 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 rounded-xl px-3.5 py-2 text-xs sm:text-sm text-white placeholder-slate-400 outline-none transition disabled:opacity-60"
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") {
-                      e.preventDefault();
-                      if (!appliedCoupon) handleApplyCoupon();
-                    }
-                  }}
-                />
-                {appliedCoupon ? (
-                  <button
-                    type="button"
-                    onClick={handleRemoveCoupon}
-                    className="px-3 py-2 bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/30 rounded-xl text-xs font-bold transition flex items-center gap-1 shrink-0 cursor-pointer"
-                  >
-                    <XCircle className="w-3.5 h-3.5" />
-                    <span>{isArabic ? "إزالة" : "Remove"}</span>
-                  </button>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={handleApplyCoupon}
-                    disabled={couponLoading || !couponInput.trim()}
-                    className="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:bg-indigo-600/40 disabled:cursor-not-allowed text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shrink-0 shadow-sm cursor-pointer"
-                  >
-                    {couponLoading && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
-                    <span>{isArabic ? "تطبيق" : "Apply"}</span>
-                  </button>
-                )}
-              </div>
-              {couponMessage && (
-                <p
-                  className={`text-xs mt-1.5 font-medium text-center ${couponMessage.type === "success" ? "text-emerald-400" : "text-rose-400"
-                    }`}
-                >
-                  {couponMessage.text}
-                </p>
-              )}
-            </div>
           </div>
 
           {/* Pending Payments Banner (if any) */}
@@ -853,7 +1020,7 @@ export default function SubscriptionsPage({
                             tx?.paymentData?.targetBillingPeriod ||
                             "monthly";
                           params.set("billingPeriod", period);
-                          window.location.href = `/payment?${params.toString()}`;
+                          navigate(`/payment?${params.toString()}`);
                         }}
                         className="w-1/2 sm:w-auto shrink-0 bg-amber-500 hover:bg-amber-600 text-white px-6 py-3 rounded-xl text-sm font-black transition-colors flex items-center justify-center gap-2 shadow-lg shadow-amber-500/20 cursor-pointer"
                       >
@@ -868,18 +1035,31 @@ export default function SubscriptionsPage({
           ) : null}
 
           {/* TWO PLAN CARDS SIDE BY SIDE */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 sm:gap-8 items-stretch">
+          <div className={`grid grid-cols-1 lg:grid-cols-2 gap-6 sm:gap-8 ${hasOpenPlanDetails ? "items-start" : "items-stretch"}`}>
             {displayPlans.map((plan) => {
+              const planKey = String(plan.key || plan._id);
               const isThisSubscribed = checkIsSubscribed(plan);
               const planName = typeof plan.name === "object"
                 ? (plan.name[isArabic ? "ar" : "en"] || plan.name.ar || plan.name.en || plan.name)
                 : plan.name;
               const pricing = getPlanPricing(plan);
               const features = getFeaturesList(plan);
-              const isExpanded = Boolean(expandedFeatures[plan.key]);
+              const isExpanded = Boolean(expandedFeatures[planKey]);
               const visibleFeatures = isExpanded ? features : features.slice(0, 5);
-              const isCurrentExpiring = isThisSubscribed && daysLeft !== null && daysLeft <= 3;
+
+              const planSubDetails = plan.key === "pro"
+                ? userSubscription?.activeSubscriptions?.pro
+                : (userSubscription?.activeSubscriptions?.payment_plus || userSubscription?.paymentPlusDetails);
+              const cardExpiresAt = planSubDetails?.expiresAt || userSubscription?.expiresAt;
+              const cardBillingPeriod = planSubDetails?.billingPeriod || userSubscription?.billingPeriod;
+              const cardDaysLeft = planSubDetails?.daysRemaining ?? daysLeft;
+
+              const isCurrentExpiring = isThisSubscribed && cardDaysLeft !== null && cardDaysLeft <= 3;
               const isSubscribingThis = subscribingPlanKey === plan.key;
+
+              const currentViewPeriod = isAnnual ? "yearly" : "monthly";
+              const isSubscribedToCurrentPeriod = isThisSubscribed && (cardBillingPeriod === currentViewPeriod || !cardBillingPeriod);
+              const isSwitchingPeriod = isThisSubscribed && Boolean(cardBillingPeriod) && cardBillingPeriod !== currentViewPeriod;
 
               return (
                 <motion.div
@@ -924,7 +1104,15 @@ export default function SubscriptionsPage({
                       {/* Status / Feature Pill */}
                       <div className="shrink-0 self-start">
                         {isThisSubscribed ? (
-                          isCurrentExpiring ? (
+                          isSwitchingPeriod ? (
+                            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 text-xs font-bold">
+                              <span>
+                                {cardBillingPeriod === "monthly"
+                                  ? (isArabic ? "مشترك شهرياً" : "Monthly Active")
+                                  : (isArabic ? "مشترك سنوياً" : "Yearly Active")}
+                              </span>
+                            </div>
+                          ) : isCurrentExpiring ? (
                             <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30 text-xs font-black">
                               <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
                               <span>{isArabic ? "ينتهي قريباً" : "Expiring soon"}</span>
@@ -947,56 +1135,122 @@ export default function SubscriptionsPage({
                       </div>
                     </div>
 
-                    {/* If Subscribed: Details Banner */}
+                    {/* If Subscribed: Details Banner with Independent Toggle */}
                     {isThisSubscribed && (
-                      <div className="mb-6 p-4 bg-white/5 border border-white/10 rounded-2xl space-y-2 text-xs sm:text-sm">
-                        <div className="flex items-center gap-2 text-indigo-300 font-bold border-b border-white/10 pb-2">
-                          <Calendar className="w-4 h-4" />
-                          <span>{t("currentSubDetails")}:</span>
-                        </div>
-                        {userSubscription?.expiresAt && (
-                          <div className="flex justify-between items-center py-1">
-                            <span className="text-slate-400">
-                              {t("expiryDate")} / {t("renewalDate")}:
-                            </span>
-                            <span className={`font-bold ${isCurrentExpiring ? "text-amber-400" : "text-emerald-400"}`}>
-                              {formatDate(userSubscription.expiresAt)}
-                              {daysLeft !== null && (
-                                <span className="ms-2 text-[10px] bg-slate-800 px-2 py-0.5 rounded-full border border-slate-700">
-                                  {daysLeft === 0
-                                    ? (isArabic ? "ينتهي اليوم" : "Expires today")
-                                    : (isArabic ? `متبقي ${daysLeft} يوم` : `${daysLeft}d left`)}
-                                </span>
+                      <div className="mb-6">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setExpandedSubDetails((prev) => ({
+                              ...prev,
+                              [planKey]: !prev[planKey],
+                            }))
+                          }
+                          className="w-full flex items-center justify-between p-3.5 bg-white/5 hover:bg-white/10 border border-white/10 rounded-2xl text-xs font-bold text-indigo-200 transition-colors cursor-pointer"
+                        >
+                          <span className="flex items-center gap-2">
+                            <Calendar className="w-4 h-4 text-indigo-400 shrink-0" />
+                            <span>{t("currentSubDetails")}</span>
+                          </span>
+                          <span className="flex items-center gap-1.5 text-[11px] text-slate-400">
+                            <span>{expandedSubDetails[planKey] ? (isArabic ? "إخفاء التفاصيل" : "Hide") : (isArabic ? "إظهار التفاصيل" : "Show")}</span>
+                            {expandedSubDetails[planKey] ? (
+                              <ChevronUp className="w-4 h-4 text-slate-400" />
+                            ) : (
+                              <ChevronDown className="w-4 h-4 text-slate-400" />
+                            )}
+                          </span>
+                        </button>
+
+                        {/* Collapsible Details Content */}
+                        {expandedSubDetails[planKey] && (
+                          <div className="mt-2.5 p-4 sm:p-5 bg-white/5 backdrop-blur-md border border-white/10 rounded-2xl sm:rounded-3xl space-y-3 text-xs sm:text-sm animate-in fade-in slide-in-from-top-2 duration-200">
+                            <div className="flex items-center justify-between border-b border-white/10 pb-2.5">
+                              <span className="text-slate-400 text-xs font-bold">
+                                {isArabic ? "حالة الاشتراك" : "Status"}
+                              </span>
+                              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 text-[11px] font-bold">
+                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                                <span>{isArabic ? "نشط الآن" : "Active"}</span>
+                              </span>
+                            </div>
+
+                            <div className="space-y-2.5 pt-0.5">
+                              {cardExpiresAt && (
+                                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 sm:gap-4 py-0.5">
+                                  <span className="text-slate-400 text-xs shrink-0">
+                                    {t("expiryDate")} / {t("renewalDate")}:
+                                  </span>
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    <span className={`font-black text-xs sm:text-sm ${isCurrentExpiring ? "text-amber-400" : "text-emerald-400"}`}>
+                                      {formatDate(cardExpiresAt)}
+                                    </span>
+                                    {cardDaysLeft !== null && (
+                                      <span className={`text-[11px] px-2.5 py-0.5 rounded-full font-bold border ${
+                                        isCurrentExpiring 
+                                          ? "bg-amber-500/15 text-amber-300 border-amber-500/30" 
+                                          : "bg-slate-800 text-slate-300 border-slate-700"
+                                      }`}>
+                                        {cardDaysLeft === 0
+                                          ? (isArabic ? "ينتهي اليوم" : "Expires today")
+                                          : (isArabic ? `متبقي ${cardDaysLeft} يوم` : `${cardDaysLeft}d left`)}
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
                               )}
-                            </span>
-                          </div>
-                        )}
-                        {userSubscription?.billingPeriod && (
-                          <div className="flex justify-between items-center py-1">
-                            <span className="text-slate-400">{t("billingCycle")}:</span>
-                            <span className="font-bold text-indigo-200">
-                              {userSubscription.billingPeriod === "yearly"
-                                ? t("annual")
-                                : t("monthlyPeriod")}
-                            </span>
+
+                              {cardBillingPeriod && (
+                                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 sm:gap-4 py-0.5 border-t border-white/5 pt-2">
+                                  <span className="text-slate-400 text-xs shrink-0">{t("billingCycle")}:</span>
+                                  <span className="font-bold text-indigo-200 text-xs sm:text-sm">
+                                    {cardBillingPeriod === "yearly"
+                                      ? (isArabic ? "سنوي" : t("annual"))
+                                      : (isArabic ? "شهري" : t("monthlyPeriod"))}
+                                  </span>
+                                </div>
+                              )}
+                            </div>
                           </div>
                         )}
                       </div>
                     )}
 
+                    {/* Upgrade Discount Banner from Payment Plus */}
+                    {pricing.upgradeDiscountAmount > 0 && !isThisSubscribed && (
+                      <div className="mb-4 p-3.5 bg-emerald-500/10 border border-emerald-500/30 rounded-2xl">
+                        <div className="flex items-center justify-between text-xs font-bold text-emerald-400 mb-1">
+                          <span>{isArabic ? "خصم الترقية من باقة المدفوعات" : "Payment Plus Upgrade Discount"}</span>
+                          <span className="bg-emerald-500/20 px-2 py-0.5 rounded-full text-xs font-black">
+                            -{pricing.upgradeDiscountAmount} {isArabic ? "ج.م" : "EGP"}
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-slate-300 leading-relaxed">
+                          {isArabic
+                            ? `عدد أيام استخدامك لباقة المدفوعات (${pricing.ppDaysUsed} يوم) تم احتسابها كخصم مباشر يُخصم من قيمة اشتراك باقة برو.`
+                            : `Your ${pricing.ppDaysUsed} active days on Payment Plus have been applied as a direct discount on Pro.`}
+                        </p>
+                      </div>
+                    )}
+
                     {/* Price Block */}
-                    {(!isThisSubscribed || isCurrentExpiring) && (
-                      <div className="mb-6">
-                        {pricing.discountAmount > 0 && (
-                          <div className="flex items-center gap-2 mb-1.5">
+                    {(!isThisSubscribed || isCurrentExpiring || isSwitchingPeriod) && (
+                      <div className="mb-4">
+                        {(pricing.discountAmount > 0 || pricing.upgradeDiscountAmount > 0) && (
+                          <div className="flex flex-wrap items-center gap-2 mb-1.5">
                             <span className="text-slate-400 line-through text-sm sm:text-base" dir="ltr">
                               {pricing.originalPrice} {isArabic ? "ج.م" : "EGP"}
                             </span>
-                            <span className="bg-rose-500/20 text-rose-400 text-[11px] font-bold px-2 py-0.5 rounded-full border border-rose-500/20">
-                              {pricing.discountType === "percentage"
-                                ? `خصم ${pricing.appliedDiscountVal}%`
-                                : `خصم ${pricing.appliedDiscountVal} ج.م`}
-                            </span>
+                            {pricing.discountAmount > 0 && (
+                              <span className="bg-rose-500/20 text-rose-400 text-[11px] font-bold px-2 py-0.5 rounded-full border border-rose-500/20">
+                                {`كوبون خصم: ${pricing.discountAmount} ج.م`}
+                              </span>
+                            )}
+                            {pricing.upgradeDiscountAmount > 0 && (
+                              <span className="bg-emerald-500/20 text-emerald-400 text-[11px] font-bold px-2 py-0.5 rounded-full border border-emerald-500/20">
+                                {`خصم ترقية: ${pricing.upgradeDiscountAmount} ج.م`}
+                              </span>
+                            )}
                           </div>
                         )}
                         <div className="flex items-baseline gap-2">
@@ -1008,6 +1262,85 @@ export default function SubscriptionsPage({
                             / {isAnnual ? t("perYear") : t("perMonth")}
                           </span>
                         </div>
+                      </div>
+                    )}
+
+                    {/* In-Card Coupon Code Section (Inside each subscription) */}
+                    {(!isThisSubscribed || isCurrentExpiring || isSwitchingPeriod) && (
+                      <div className="mb-5 pt-3 border-t border-slate-800">
+                        {appliedCoupons[plan.key] ? (
+                          <div className="flex items-center justify-between bg-emerald-500/10 border border-emerald-500/20 px-3 py-2 rounded-xl text-xs">
+                            <div className="flex items-center gap-2 text-emerald-400 font-bold">
+                              <Tag className="w-3.5 h-3.5 shrink-0" />
+                              <span>{appliedCoupons[plan.key].code}</span>
+                              <span className="text-[10px] bg-emerald-500/20 px-1.5 py-0.5 rounded-full">
+                                {pricing.discountType === "percentage"
+                                  ? `${pricing.appliedDiscountVal}% ${isArabic ? "خصم" : "OFF"}`
+                                  : `-${pricing.discountAmount} ${isArabic ? "ج.م" : "EGP"}`}
+                              </span>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveCardCoupon(plan.key)}
+                              className="text-slate-400 hover:text-rose-400 transition-colors p-1 cursor-pointer"
+                              title={isArabic ? "إزالة الكود" : "Remove"}
+                            >
+                              <X className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        ) : openCouponPlanKey === plan.key ? (
+                          <div className="space-y-1.5">
+                            <div className="flex items-center gap-2">
+                              <input
+                                type="text"
+                                value={couponInputs[plan.key] || ""}
+                                onChange={(e) => {
+                                  setCouponInputs((prev) => ({ ...prev, [plan.key]: e.target.value }));
+                                  setCouponCardMessages((prev) => ({ ...prev, [plan.key]: null }));
+                                }}
+                                placeholder={isArabic ? "أدخل كود الخصم" : "Enter coupon code"}
+                                disabled={couponLoadingPlanKey === plan.key}
+                                className="flex-1 bg-slate-800 border border-slate-700 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 rounded-xl px-3 py-1.5 text-xs text-white placeholder-slate-400 outline-none transition"
+                                onKeyDown={(e) => {
+                                  if (e.key === "Enter") {
+                                    e.preventDefault();
+                                    handleApplyCardCoupon(plan);
+                                  }
+                                }}
+                              />
+                              <button
+                                type="button"
+                                onClick={() => handleApplyCardCoupon(plan)}
+                                disabled={couponLoadingPlanKey === plan.key || !couponInputs[plan.key]?.trim()}
+                                className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white rounded-xl text-xs font-bold transition flex items-center gap-1 cursor-pointer"
+                              >
+                                {couponLoadingPlanKey === plan.key && <Loader2 className="w-3 h-3 animate-spin" />}
+                                <span>{isArabic ? "تطبيق" : "Apply"}</span>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setOpenCouponPlanKey(null)}
+                                className="p-1.5 text-slate-400 hover:text-white rounded-xl hover:bg-slate-800 transition cursor-pointer"
+                              >
+                                <X className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                            {couponCardMessages[plan.key] && (
+                              <p className={`text-[11px] font-medium ${couponCardMessages[plan.key]?.type === "success" ? "text-emerald-400" : "text-rose-400"}`}>
+                                {couponCardMessages[plan.key]?.text}
+                              </p>
+                            )}
+                          </div>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => setOpenCouponPlanKey(plan.key)}
+                            className="inline-flex items-center gap-1.5 text-xs text-indigo-400 hover:text-indigo-300 font-bold transition-colors cursor-pointer py-1"
+                          >
+                            <Tag className="w-3.5 h-3.5" />
+                            <span>{isArabic ? "إضافة كود خصم" : "Add discount coupon"}</span>
+                          </button>
+                        )}
                       </div>
                     )}
 
@@ -1033,9 +1366,33 @@ export default function SubscriptionsPage({
                             </span>
                           </button>
                         </div>
+                      ) : isSwitchingPeriod ? (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setShowSwitchPeriodConfirm({
+                              plan,
+                              fromPeriod: cardBillingPeriod || "monthly",
+                              toPeriod: currentViewPeriod,
+                            });
+                          }}
+                          disabled={isSubscribingThis}
+                          className="relative flex items-center justify-center w-full py-3.5 rounded-2xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-sm sm:text-base transition-all group overflow-hidden disabled:opacity-50 shadow-lg shadow-indigo-600/30 cursor-pointer"
+                        >
+                          <span className="relative z-10 flex items-center gap-2">
+                            {isSubscribingThis ? (
+                              <Loader2 className="w-5 h-5 animate-spin" />
+                            ) : (
+                              isArabic
+                                ? `التحويل إلى ${currentViewPeriod === "yearly" ? "الاشتراك السنوي" : "الاشتراك الشهري"}`
+                                : `Switch to ${currentViewPeriod === "yearly" ? "annual" : "monthly"} billing`
+                            )}
+                            {!isSubscribingThis && <ArrowRight className="w-4 h-4 group-hover:-translate-x-1 transition-transform" />}
+                          </span>
+                        </button>
                       ) : isThisSubscribed ? (
                         <div>
-                          {showCancelConfirm ? (
+                          {showCancelConfirm === plan.key ? (
                             <div className="bg-rose-500/10 border border-rose-500/30 rounded-2xl p-4 text-center">
                               <p className="text-rose-200 font-bold text-xs mb-3">
                                 {t("confirmCancelSub")}
@@ -1043,7 +1400,7 @@ export default function SubscriptionsPage({
                               <div className="flex gap-2 justify-center">
                                 <button
                                   type="button"
-                                  onClick={handleCancelSubscription}
+                                  onClick={() => handleCancelSubscription(plan)}
                                   disabled={cancelling}
                                   className="bg-rose-600 hover:bg-rose-700 text-white font-bold py-2 px-4 rounded-xl text-xs transition-all disabled:opacity-50 flex items-center gap-1.5 cursor-pointer"
                                 >
@@ -1052,7 +1409,7 @@ export default function SubscriptionsPage({
                                 </button>
                                 <button
                                   type="button"
-                                  onClick={() => setShowCancelConfirm(false)}
+                                  onClick={() => setShowCancelConfirm(null)}
                                   disabled={cancelling}
                                   className="bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold py-2 px-4 rounded-xl text-xs transition-all cursor-pointer"
                                 >
@@ -1063,7 +1420,7 @@ export default function SubscriptionsPage({
                           ) : (
                             <button
                               type="button"
-                              onClick={() => setShowCancelConfirm(true)}
+                              onClick={() => setShowCancelConfirm(plan.key)}
                               className="w-full py-3 px-4 rounded-xl border border-rose-500/30 bg-rose-500/10 text-rose-400 hover:bg-rose-500 hover:text-white font-bold text-xs transition-all flex items-center justify-center gap-2 cursor-pointer"
                             >
                               <XCircle className="w-4 h-4" />
@@ -1124,7 +1481,7 @@ export default function SubscriptionsPage({
                         onClick={() =>
                           setExpandedFeatures((prev) => ({
                             ...prev,
-                            [plan.key]: !prev[plan.key],
+                            [planKey]: !prev[planKey],
                           }))
                         }
                         className="mt-4 flex items-center justify-center gap-1.5 w-full py-2 rounded-xl border border-slate-700 text-slate-400 hover:text-white hover:bg-slate-800 transition-colors font-medium text-xs cursor-pointer"
@@ -1150,6 +1507,75 @@ export default function SubscriptionsPage({
       )}
 
       {/* Pending Payment Details Modal (Removed) */}
+
+      {/* Confirm Switch Period Modal */}
+      <AnimatePresence>
+        {showSwitchPeriodConfirm && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/75 backdrop-blur-md">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 15 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 15 }}
+              className="bg-slate-900 border border-slate-800 rounded-3xl p-6 sm:p-8 max-w-md w-full shadow-2xl relative text-center"
+              dir={isArabic ? "rtl" : "ltr"}
+            >
+              {/* Close Button */}
+              <button
+                type="button"
+                onClick={() => setShowSwitchPeriodConfirm(null)}
+                disabled={cancelling}
+                className="absolute top-4 start-4 text-slate-400 hover:text-white p-2 rounded-xl transition-colors cursor-pointer disabled:opacity-50"
+              >
+                <X className="w-5 h-5" />
+              </button>
+
+              {/* Icon */}
+              <div className="w-16 h-16 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-amber-400 flex items-center justify-center mx-auto mb-5 shadow-inner">
+                <AlertTriangle className="w-8 h-8" />
+              </div>
+
+              {/* Title */}
+              <h3 className="text-xl font-black text-white mb-3">
+                {isArabic ? "تأكيد تحويل الاشتراك" : "Confirm Subscription Switch"}
+              </h3>
+
+              {/* Alert Message in Fluent Arabic as requested */}
+              <p className="text-sm text-slate-200 leading-relaxed mb-6 font-medium bg-slate-800/80 p-4 rounded-2xl border border-slate-700/60 shadow-inner">
+                {isArabic
+                  ? "سيتم إلغاء الاشتراك الشهري ويتم تفعيل الباقة السنوية حال الدفع."
+                  : "Your monthly subscription will be cancelled, and the annual plan will be activated upon payment."}
+              </p>
+
+              {/* Actions */}
+              <div className="flex flex-col sm:flex-row gap-3">
+                <button
+                  type="button"
+                  onClick={handleConfirmSwitchPeriod}
+                  disabled={cancelling}
+                  className="flex-1 py-3.5 px-5 rounded-xl bg-indigo-600 hover:bg-indigo-500 active:scale-95 text-white font-bold text-sm transition-all shadow-lg shadow-indigo-600/30 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                >
+                  {cancelling ? (
+                    <Loader2 className="w-5 h-5 animate-spin" />
+                  ) : (
+                    <>
+                      <span>{isArabic ? "متابعة الدفع" : "Proceed to Payment"}</span>
+                      <ArrowRight className="w-4 h-4" />
+                    </>
+                  )}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowSwitchPeriodConfirm(null)}
+                  disabled={cancelling}
+                  className="py-3.5 px-5 rounded-xl bg-slate-800 hover:bg-slate-700 active:scale-95 text-slate-300 font-bold text-sm transition-all cursor-pointer disabled:opacity-50"
+                >
+                  {isArabic ? "تراجع" : "Cancel"}
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
 
       {/* Complete Missing Profile Details Modal */}
       <CompleteProfileModal

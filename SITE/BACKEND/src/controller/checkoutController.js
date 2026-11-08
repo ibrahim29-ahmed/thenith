@@ -9,10 +9,12 @@ const { notifyUser } = _dashboardNotifications;
 const { sendOrderEmail } = mailService;
 
 import Coupon from "../models/Coupon.js";
+import User from "../models/User.js";
 import PaymentTransaction from "../models/PaymentTransaction.js";
 import { processCustomCardsForOrder } from "../services/customCardOrderService.js";
 import { getPaymentConfig } from "../util/paymentConfig.js";
 import { ensureUserPhone } from "./paymentController.js";
+import { getCouponUsageId, hasUsedCouponId } from "../util/couponUsage.js";
 
 // POST /api/checkout/validate-coupon
 export const validateCoupon = async (req, res) => {
@@ -45,27 +47,20 @@ export const validateCoupon = async (req, res) => {
         .json({ error: "تم استنفاد الحد الأقصى لاستخدام هذا الكوبون." });
     }
 
-    // Strictly enforce one use per user
+    // Strictly enforce one use per user based on couponId
     if (req.user) {
-      const inUsedBy =
-        coupon.usedBy &&
-        coupon.usedBy.some(
-          (id) => id.toString() === req.user._id.toString()
-        );
-      const hasUsedInOrder = await Order.exists({
-        userId: req.user._id,
-        paymentStatus: "paid",
-        couponId: coupon._id,
-      });
+      const couponTrackingId = getCouponUsageId(coupon);
+      const userDoc = await User.findById(req.user._id).select("usedCouponIds");
+      const hasUsedThisId = hasUsedCouponId(userDoc?.usedCouponIds, couponTrackingId);
       const hasUsedInTx = await PaymentTransaction.exists({
         userId: req.user._id,
         status: "paid",
-        "paymentData.couponCode": coupon.code,
+        "paymentData.couponId": couponTrackingId,
       });
-      if (inUsedBy || hasUsedInOrder || hasUsedInTx) {
+      if (hasUsedThisId || hasUsedInTx) {
         return res
           .status(400)
-          .json({ error: "لقد قمت باستخدام هذا الكوبون من قبل. يُسمح باستخدام الكوبون مرة واحدة فقط لكل مستخدم." });
+          .json({ error: "لقد تم استخدام هذا الكود مسبقاً" });
       }
     }
 
@@ -238,27 +233,19 @@ export const createOrder = async (req, res) => {
           code: couponCode.toUpperCase().trim(),
         });
         if (appliedCoupon) {
-          // Strictly enforce one use per user account
+          // Strictly enforce one use per user account based on couponId
           if (req.user) {
-            const inUsedBy =
-              appliedCoupon.usedBy &&
-              appliedCoupon.usedBy.some(
-                (id) => id.toString() === req.user._id.toString()
-              );
-            const hasUsedInOrder = await Order.exists({
-              userId: req.user._id,
-              paymentStatus: "paid",
-              couponId: appliedCoupon._id,
-            });
+            const couponTrackingId = getCouponUsageId(appliedCoupon);
+            const userDoc = await User.findById(req.user._id).select("usedCouponIds");
+            const hasUsedThisId = hasUsedCouponId(userDoc?.usedCouponIds, couponTrackingId);
             const hasUsedInTx = await PaymentTransaction.exists({
               userId: req.user._id,
               status: "paid",
-              "paymentData.couponCode": appliedCoupon.code,
+              "paymentData.couponId": couponTrackingId,
             });
-            if (inUsedBy || hasUsedInOrder || hasUsedInTx) {
+            if (hasUsedThisId || hasUsedInTx) {
               return res.status(400).json({
-                error:
-                  "لقد قمت باستخدام هذا الكوبون من قبل. يُسمح باستخدام الكوبون مرة واحدة فقط لكل حساب.",
+                error: "لقد تم استخدام هذا الكود مسبقاً",
               });
             }
           }
@@ -286,12 +273,18 @@ export const createOrder = async (req, res) => {
         await processCustomCardsForOrder(order);
 
         if (appliedCoupon && discount > 0) {
+          const cTrackId = getCouponUsageId(appliedCoupon);
+
           appliedCoupon.usedCount = (appliedCoupon.usedCount || 0) + 1;
           if (!appliedCoupon.usedBy) appliedCoupon.usedBy = [];
           if (!appliedCoupon.usedBy.some((id) => id.toString() === req.user._id.toString())) {
             appliedCoupon.usedBy.push(req.user._id);
           }
           await appliedCoupon.save();
+
+          await User.findByIdAndUpdate(req.user._id, {
+            $addToSet: { usedCouponIds: cTrackId },
+          });
         }
 
         notifyUser(req.user._id.toString(), {
@@ -362,12 +355,18 @@ export const createOrder = async (req, res) => {
         await processCustomCardsForOrder(order);
 
         if (appliedCoupon && discount > 0) {
+          const cTrackId = getCouponUsageId(appliedCoupon);
+
           appliedCoupon.usedCount += 1;
           if (!appliedCoupon.usedBy) appliedCoupon.usedBy = [];
           if (!appliedCoupon.usedBy.some((id) => id.toString() === req.user._id.toString())) {
             appliedCoupon.usedBy.push(req.user._id);
           }
           await appliedCoupon.save();
+
+          await User.findByIdAndUpdate(req.user._id, {
+            $addToSet: { usedCouponIds: cTrackId },
+          });
         }
 
         notifyUser(req.user._id.toString(), {
@@ -416,7 +415,7 @@ export const createOrder = async (req, res) => {
           totalAmount: finalTotal,
           shippingCost,
           discount,
-          couponId: appliedCoupon && discount > 0 ? appliedCoupon._id : null,
+          couponId: appliedCoupon && discount > 0 ? getCouponUsageId(appliedCoupon) : null,
           paymentMethod: "online",
         });
       }

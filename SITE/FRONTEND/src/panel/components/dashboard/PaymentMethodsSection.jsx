@@ -21,6 +21,10 @@ import {
   Image as ImageIcon,
   ToggleLeft,
   ToggleRight,
+  BadgeCheck,
+  Calendar,
+  ArrowRight,
+  Clock,
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import toast from "react-hot-toast";
@@ -35,6 +39,18 @@ import {
   updatePaymentPageSettings,
 } from "../../services/dashboardApi.js";
 import { uploadRoutes } from "../../../api/routes/upload.js";
+
+function broadcastWalletUpdate() {
+  try {
+    if (typeof window !== "undefined") {
+      const now = String(Date.now());
+      localStorage.setItem("thenith_profile_updated_at", now);
+      const ch = new BroadcastChannel("thenith_profile_sync");
+      ch.postMessage({ type: "wallet_update", timestamp: now });
+      ch.close();
+    }
+  } catch {}
+}
 
 // ── Official Normalized Wallet Logos ──────────────────────────────────────────
 
@@ -211,6 +227,8 @@ export default function PaymentMethodsSection({
     ownerUsername || ownerPublicId || "",
   );
   const [hasPaymentPlus, setHasPaymentPlus] = useState(false);
+  const [paymentPlusDetails, setPaymentPlusDetails] = useState(null);
+  const [isPro, setIsPro] = useState(false);
 
   useEffect(() => {
     if (ownerUsername || ownerPublicId) {
@@ -262,6 +280,12 @@ export default function PaymentMethodsSection({
             setPanelConfig(res.panelConfig);
           }
           setHasPaymentPlus(Boolean(res.hasPaymentPlus));
+          if (res.paymentPlusDetails) {
+            setPaymentPlusDetails(res.paymentPlusDetails);
+          }
+          if (typeof res.isPro !== "undefined") {
+            setIsPro(Boolean(res.isPro));
+          }
           if (res.paymentPageSettings) {
             setPaymentPageSettings(res.paymentPageSettings);
           }
@@ -297,6 +321,7 @@ export default function PaymentMethodsSection({
         })),
       );
       await setActivePaymentMethod(id);
+      broadcastWalletUpdate();
       toast.success(
         isAr ? "تم تحديد وسيلة الدفع الأساسية" : "Primary payment method set",
       );
@@ -341,6 +366,7 @@ export default function PaymentMethodsSection({
 
     try {
       const res = await deletePaymentMethod(id);
+      broadcastWalletUpdate();
       const allowedIds = new Set(PROVIDERS.map((p) => p.id));
       if (res && res.paymentMethods) {
         const filtered = res.paymentMethods.filter((m) =>
@@ -414,6 +440,7 @@ export default function PaymentMethodsSection({
       }
 
       setEditingMethod(null);
+      broadcastWalletUpdate();
       toast.success(
         isAr
           ? "تم تحديث بيانات المحفظة بنجاح"
@@ -465,6 +492,7 @@ export default function PaymentMethodsSection({
         accountName: "",
       });
       setIsAddModalOpen(false);
+      broadcastWalletUpdate();
       toast.success(
         isAr ? "تم إضافة وسيلة الدفع بنجاح" : "Payment method added successfully",
       );
@@ -599,7 +627,8 @@ export default function PaymentMethodsSection({
         </div>
       </div>
 
-      {/* ── Primary Link + Unified Hub Toggle ── */}
+
+          {/* ── Primary Link + Unified Hub Toggle ── */}
       {!isLoading && paymentMethods.length > 0 && (() => {
         const primaryMethod = paymentMethods.find((m) => m.id === activePaymentMethodId);
         const primaryLink = (() => {
@@ -701,6 +730,7 @@ export default function PaymentMethodsSection({
                         await updatePaymentPageSettings({
                           isUnifiedHubEnabled: newVal,
                         });
+                        broadcastWalletUpdate();
                         toast.success(
                           isAr
                             ? newVal
@@ -968,6 +998,7 @@ export default function PaymentMethodsSection({
           })}
         </div>
       )}
+
 
       {/* ── Modal 1: Add New Wallet / Payment Method ── */}
       <AnimatePresence>
@@ -1590,6 +1621,7 @@ export default function PaymentMethodsSection({
                           displayName: settingsForm.displayName,
                           description: settingsForm.description,
                         });
+                        broadcastWalletUpdate();
                         setPaymentPageSettings((prev) => ({
                           ...prev,
                           avatar: settingsForm.avatar,

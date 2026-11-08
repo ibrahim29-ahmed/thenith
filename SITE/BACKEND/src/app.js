@@ -15,6 +15,8 @@ import subscriptionRoutes from "./routes/subscription.js";
 import cardRoutes from "./routes/cards.js";
 import dashboardRoutes from "./routes/dashboard/dashboardRoutes.js";
 import publicRoutes from "./routes/publicProfile/publicProfileRoutes.js";
+import _publicProfileController2536 from "./controller/publicProfile/publicProfileController.js";
+const { resolvePublicWallet } = _publicProfileController2536;
 import appointmentRoutes from "./routes/appointments.js";
 import hireRoutes from "./routes/hire.js";
 import analyticsRoutes from "./routes/analytics.js";
@@ -110,14 +112,20 @@ app.use("/api/policies", policyRoutes);
 app.use("/api/referrals", referralRoutes);
 
 
+// Direct wallet & payment resolution routes
+app.get("/api/public/wallet/:identifier", resolvePublicWallet);
+app.get("/api/wallet/:identifier", resolvePublicWallet);
+app.get("/api/pay/:identifier", resolvePublicWallet);
+app.get("/api/m/:identifier", resolvePublicWallet);
+app.get("/public/wallet/:identifier", resolvePublicWallet);
+app.get("/wallet/:identifier", resolvePublicWallet);
+app.get("/pay/:identifier", resolvePublicWallet);
+app.get("/m/:identifier", resolvePublicWallet);
+
 app.use("/api/public", publicRoutes);
 app.use("/api/p", publicRoutes);
-app.use("/api/m", publicRoutes);
-app.use("/api/pay", publicRoutes);
 app.use("/public", publicRoutes);
 app.use("/p", publicRoutes);
-app.use("/m", publicRoutes);
-app.use("/pay", publicRoutes);
 app.use("/", publicRoutes);
 
 app.use(notFound);

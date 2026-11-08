@@ -26,6 +26,7 @@ import OrderDraft from "../models/OrderDraft.js";
 import Plan from "../models/Plan.js";
 import AuditLog from "../models/AuditLog.js";
 import Coupon from "../models/Coupon.js";
+import Setting from "../models/Setting.js";
 import PaymentTransaction from "../models/PaymentTransaction.js";
 import _dashboardNotifications1234 from "../util/dashboardNotifications.js";
 const { notifyUser } = _dashboardNotifications1234;
@@ -38,6 +39,11 @@ import mailService from "../util/mail.js";
 const { sendSubscriptionEmail, sendOrderEmail } = mailService;
 import { getPaymentConfig } from "../util/paymentConfig.js";
 import * as referralService from "../services/referralService.js";
+import { getCouponUsageId, hasUsedCouponId } from "../util/couponUsage.js";
+
+function escapeRegex(value) {
+  return String(value ?? "").replace(/[.*+?${}()|[\]\\]/g, "\\$&");
+}
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -347,7 +353,22 @@ export function checkIfTransactionExpired(pTx) {
 }
 
 function getRedirectionUrls(req, extraQuery = "") {
+  const configuredOrigins = [env.APP_URL, ...(env.CLIENT_ORIGIN || "").split(",")];
+  const publicBase = configuredOrigins
+    .map((origin) => origin.trim())
+    .find((origin) => {
+      try {
+        const url = new URL(origin);
+        return (
+          url.protocol === "https:" &&
+          !["localhost", "127.0.0.1", "::1"].includes(url.hostname.toLowerCase())
+        );
+      } catch {
+        return false;
+      }
+    });
   const base =
+    publicBase ||
     env.APP_URL ||
     `${req.protocol}://${req.get("host").replace(":4000", ":3000")}`;
   const queryStr = extraQuery
@@ -554,12 +575,44 @@ async function activateSubscription(subscription, txData, pTx) {
 
   await subscription.save();
 
-  if (pTx?.paymentData?.couponCode) {
+  // Update user model based on plan type
+  try {
+    const subPlan = await Plan.findById(subscription.planId);
+    if (subPlan?.key === "payment_plus") {
+      await mongoose.model("User").findByIdAndUpdate(subscription.userId, {
+        $set: {
+          paymentPlusActive: true,
+          hasStandalonePaymentPlus: true,
+          paymentPlusOverride: "enabled",
+          paymentPlusStartedAt: subscription.startedAt || new Date(),
+          paymentPlusExpiresAt: subscription.expiresAt,
+          paymentPlusBillingPeriod: subscription.billingPeriod || "monthly",
+        },
+      });
+    } else if (subPlan?.key === "pro") {
+      await mongoose.model("User").findByIdAndUpdate(subscription.userId, {
+        $set: {
+          paymentPlusActive: true,
+          paymentPlusOverride: "enabled",
+        },
+      });
+    }
+  } catch (err) {
+    console.error("Error updating user payment plus status on activation:", err);
+  }
+
+  if (pTx?.paymentData?.couponId) {
     try {
+      const couponUsageId = String(pTx.paymentData.couponId).trim();
+      // The condition makes gateway/webhook retries idempotent: one successful
+      // payment consumes this coupon exactly once.
       await Coupon.updateOne(
-        { code: String(pTx.paymentData.couponCode).toUpperCase().trim() },
-        { $addToSet: { usedBy: subscription.userId } }
+        { couponId: couponUsageId, usedBy: { $ne: subscription.userId } },
+        { $addToSet: { usedBy: subscription.userId }, $inc: { usedCount: 1 } },
       );
+      await User.findByIdAndUpdate(subscription.userId, {
+        $addToSet: { usedCouponIds: couponUsageId },
+      });
     } catch {}
   }
 
@@ -950,6 +1003,12 @@ function runWithPaymentLock(lockKey, task) {
 // Body: { planId, billingPeriod, methodId?, walletNumber?, couponCode? }
 
 export const createSubscriptionPayment = asyncHandler(async (req, res) => {
+  const loggedBody = { ...req.body };
+  if (loggedBody.walletNumber) {
+    loggedBody.walletNumber = `***${String(loggedBody.walletNumber).slice(-2)}`;
+  }
+  console.info("[payment.subscription] request body", loggedBody);
+
   const { planId, billingPeriod, methodId, walletNumber, couponCode, saveCard, referralRewardId, applyReferralDiscount } =
     req.body;
   const user = req.user;
@@ -969,14 +1028,21 @@ export const createSubscriptionPayment = asyncHandler(async (req, res) => {
   }
   if (!plan) return res.status(404).json({ error: "Plan not found" });
 
-  // Retrieve the existing (default Free) subscription or create one
-  let existingSub = await Subscription.findOne({ userId: user._id });
+  // Retrieve existing subscription for this plan, or an unused free subscription, or create a new one
+  let existingSub = await Subscription.findOne({ userId: user._id, planId: plan._id });
   if (!existingSub) {
     const freePlan = await Plan.findOne({ key: "free" });
+    if (freePlan) {
+      existingSub = await Subscription.findOne({ userId: user._id, planId: freePlan._id });
+    }
+  }
+  if (!existingSub) {
     existingSub = await Subscription.create({
       userId: user._id,
-      planId: freePlan?._id,
-      status: "active",
+      planId: plan._id,
+      // Do not grant plan access merely because a payment intent was opened.
+      // activateSubscription switches this to active after payment confirmation.
+      status: "pending",
       startedAt: new Date(),
       provider: "manual",
     });
@@ -987,10 +1053,35 @@ export const createSubscriptionPayment = asyncHandler(async (req, res) => {
   let discount = 0;
   let appliedCoupon = null;
 
+  // Upgrade discount from Payment Plus to Pro (calculated from latest active days on Payment Plus)
+  let upgradeDiscount = 0;
+  let ppDaysUsed = 0;
+  if (plan.key === "pro") {
+    try {
+      const subState = await getSubscriptionState(user._id);
+      const upDisc = subState?.upgradeDiscount || subState?.paymentPlusDetails?.upgradeDiscount || 0;
+      const ppDays = subState?.paymentPlusDaysUsed || subState?.paymentPlusDetails?.daysUsed || 0;
+      if (upDisc > 0) {
+        upgradeDiscount = Number(upDisc) || 0;
+        ppDaysUsed = Number(ppDays) || 0;
+        discount += upgradeDiscount;
+      }
+    } catch (e) {
+      console.warn("[createSubscriptionPayment] Error calculating upgrade discount:", e.message);
+    }
+  }
+
   // Apply coupon if provided
   if (couponCode) {
+    const cleanUpper = couponCode.toUpperCase().trim();
+    const safeCode = escapeRegex(cleanUpper);
     appliedCoupon = await Coupon.findOne({
-      code: couponCode.toUpperCase().trim(),
+      $or: [
+        { code: cleanUpper },
+        { code: { $regex: new RegExp(`^${safeCode}$`, "i") } },
+        { couponId: cleanUpper },
+        { couponId: { $regex: new RegExp(`^${safeCode}$`, "i") } },
+      ],
     });
     if (appliedCoupon?.isActive) {
       let valid = true;
@@ -999,27 +1090,31 @@ export const createSubscriptionPayment = asyncHandler(async (req, res) => {
         new Date() > new Date(appliedCoupon.expiresAt)
       )
         valid = false;
-      if (
-        appliedCoupon.maxUses !== null &&
-        appliedCoupon.usedCount >= appliedCoupon.maxUses
-      )
+      const hasMaxLimit = appliedCoupon.maxUses != null && Number(appliedCoupon.maxUses) > 0;
+      if (hasMaxLimit && appliedCoupon.usedCount >= appliedCoupon.maxUses)
         valid = false;
       if (appliedCoupon.appliesTo === "store") valid = false;
+      if (appliedCoupon.applicablePlan && appliedCoupon.applicablePlan !== "all" && plan.key !== appliedCoupon.applicablePlan) {
+        return res.status(400).json({
+          error: `هذا الكود مخصص لباقة ${appliedCoupon.applicablePlan === "pro" ? "Pro" : "المدفوعات Payment Plus"} فقط.`,
+          code: "COUPON_PLAN_MISMATCH",
+        });
+      }
 
-      // Strictly enforce one use per user account
+      // Strictly enforce one use per user account based on couponId
+      const couponTrackingId = getCouponUsageId(appliedCoupon);
+
       let alreadyUsedByUser = false;
       if (user) {
-        const inUsedBy =
-          appliedCoupon.usedBy &&
-          appliedCoupon.usedBy.some(
-            (id) => id.toString() === user._id.toString()
-          );
+        const userDoc = await User.findById(user._id).select("usedCouponIds").lean();
+        const hasUsedThisId = hasUsedCouponId(userDoc?.usedCouponIds, couponTrackingId);
         const hasUsedInTx = await PaymentTransaction.exists({
           userId: user._id,
           status: "paid",
-          "paymentData.couponCode": couponCode.toUpperCase().trim(),
+          "paymentData.couponId": couponTrackingId,
         });
-        if (inUsedBy || hasUsedInTx) {
+
+        if (hasUsedThisId || hasUsedInTx) {
           alreadyUsedByUser = true;
           valid = false;
         }
@@ -1027,7 +1122,7 @@ export const createSubscriptionPayment = asyncHandler(async (req, res) => {
 
       if (alreadyUsedByUser) {
         return res.status(400).json({
-          error: "لقد قمت باستخدام هذا الكوبون من قبل. يُسمح باستخدام الكوبون مرة واحدة فقط لكل حساب.",
+          error: "لقد تم استخدام هذا الكود مسبقاً",
           code: "COUPON_ALREADY_USED",
         });
       }
@@ -1123,9 +1218,41 @@ export const createSubscriptionPayment = asyncHandler(async (req, res) => {
     existingSub.cancellationReason = "";
     await existingSub.save();
 
+    if (plan.key === "payment_plus") {
+      await User.findByIdAndUpdate(user._id, {
+        $set: {
+          paymentPlusActive: true,
+          hasStandalonePaymentPlus: true,
+          paymentPlusOverride: "enabled",
+          paymentPlusStartedAt: new Date(),
+          paymentPlusExpiresAt: expiresAt,
+          paymentPlusBillingPeriod: billingPeriod,
+        },
+      });
+    } else if (plan.key === "pro") {
+      await User.findByIdAndUpdate(user._id, {
+        $set: {
+          paymentPlusActive: true,
+          paymentPlusOverride: "enabled",
+        },
+      });
+    }
+
+    const couponTrackingId = getCouponUsageId(appliedCoupon);
+
     if (appliedCoupon) {
       appliedCoupon.usedCount = (appliedCoupon.usedCount || 0) + 1;
+      if (!appliedCoupon.usedBy) appliedCoupon.usedBy = [];
+      if (!appliedCoupon.usedBy.some((id) => id.toString() === user._id.toString())) {
+        appliedCoupon.usedBy.push(user._id);
+      }
       await appliedCoupon.save();
+    }
+
+    if (couponTrackingId) {
+      await User.findByIdAndUpdate(user._id, {
+        $addToSet: { usedCouponIds: couponTrackingId },
+      });
     }
 
     if (referralReward && referralReward.rewardId) {
@@ -1159,6 +1286,7 @@ export const createSubscriptionPayment = asyncHandler(async (req, res) => {
       paymentData: {
         isFree: true,
         couponCode: appliedCoupon?.code || couponCode || null,
+        couponId: couponTrackingId,
         planKey: plan.key,
         billingPeriod,
         discountAmount: discount,
@@ -1189,12 +1317,19 @@ export const createSubscriptionPayment = asyncHandler(async (req, res) => {
 
   // Validate that selected payment method is active in platform configuration
   const paymentConfig = await getPaymentConfig();
+  const numericMethodId = methodId == null || methodId === "" ? null : Number(methodId);
   if (methodId != null) {
     const foundMethod = paymentConfig.methods.find(
       (m) =>
         (m.payment_method_id != null && Number(m.payment_method_id) === Number(methodId)) ||
         m.id === String(methodId)
     );
+    if (!Number.isInteger(numericMethodId) || numericMethodId <= 0 || !foundMethod || foundMethod.type !== "online") {
+      return res.status(400).json({
+        error: "معرّف وسيلة الدفع غير صالح أو غير مدعوم للدفع الإلكتروني.",
+        code: "INVALID_PAYMENT_METHOD",
+      });
+    }
     if (foundMethod && !foundMethod.enabled) {
       return res.status(400).json({
         error: `طريقة الدفع '${foundMethod.name_ar || foundMethod.name_en}' غير مفعلة حالياً في المنصة.`,
@@ -1404,7 +1539,7 @@ export const createSubscriptionPayment = asyncHandler(async (req, res) => {
     try {
       txData = await fawaterak.createTransaction({
         amount: finalAmount,
-        methodId: methodId || null,
+        methodId: numericMethodId,
         walletNumber: walletNumber || null,
         customer: buildCustomer(user, { phone: walletNumber }),
         orderId: existingSub._id,
@@ -1412,10 +1547,16 @@ export const createSubscriptionPayment = asyncHandler(async (req, res) => {
         ...urls,
       });
     } catch (gatewayErr) {
+      const missingGatewayConfig = gatewayErr.code === "FAWATERAK_CONFIG_MISSING";
       const errMsg =
         gatewayErr.message?.replace(/^Fawaterak:\s*/i, "") ||
         "تعذر بدء عملية الدفع حالياً. يرجى اختيار وسيلة دفع أخرى.";
-      return { isError: true, error: errMsg, status: 400 };
+      return {
+        isError: true,
+        error: errMsg,
+        code: gatewayErr.code,
+        status: missingGatewayConfig ? 503 : 400,
+      };
     }
 
     // Skip a redundant getTransactionData round-trip: createTransaction already
@@ -1447,6 +1588,11 @@ export const createSubscriptionPayment = asyncHandler(async (req, res) => {
       referralDiscountPercent: referralDiscountPercent || 0,
       referralDiscountAmount: referralDiscountAmount || 0,
       originalPrice: price,
+      upgradeDiscount,
+      paymentPlusDaysUsed: ppDaysUsed,
+      couponDiscountAmount: Math.max(0, discount - upgradeDiscount - referralDiscountAmount),
+      couponCode: appliedCoupon?.code || couponCode || null,
+      couponId: getCouponUsageId(appliedCoupon),
     };
 
     const methodName =
@@ -1484,14 +1630,8 @@ export const createSubscriptionPayment = asyncHandler(async (req, res) => {
       ],
     });
 
-    if (appliedCoupon && discount > 0) {
-      appliedCoupon.usedCount += 1;
-      if (!appliedCoupon.usedBy) appliedCoupon.usedBy = [];
-      if (!appliedCoupon.usedBy.some((id) => id.toString() === user._id.toString())) {
-        appliedCoupon.usedBy.push(user._id);
-      }
-      await appliedCoupon.save();
-    }
+    // Do not consume a coupon for a pending payment. Successful activation
+    // records the immutable coupon id in activateSubscription.
 
     return {
       success: true,
@@ -1514,7 +1654,10 @@ export const createSubscriptionPayment = asyncHandler(async (req, res) => {
   });
 
   if (responseData?.isError) {
-    return res.status(responseData.status || 400).json({ error: responseData.error });
+    return res.status(responseData.status || 400).json({
+      error: responseData.error,
+      ...(responseData.code ? { code: responseData.code } : {}),
+    });
   }
 
   res.json(responseData);
@@ -3303,28 +3446,57 @@ export const getInvoiceDetails = asyncHandler(async (req, res) => {
     let appliedCoupon = null;
     let referralInfo = null;
 
+    // Upgrade discount from Payment Plus to Pro (calculated from latest active days on Payment Plus)
+    let upgradeDiscount = 0;
+    let ppDaysUsed = 0;
+    if (plan.key === "pro" && user) {
+      try {
+        const subState = await getSubscriptionState(user._id);
+        const upDisc = subState?.upgradeDiscount || subState?.paymentPlusDetails?.upgradeDiscount || 0;
+        const ppDays = subState?.paymentPlusDaysUsed || subState?.paymentPlusDetails?.daysUsed || 0;
+        if (upDisc > 0) {
+          upgradeDiscount = Number(upDisc) || 0;
+          ppDaysUsed = Number(ppDays) || 0;
+          discount += upgradeDiscount;
+        }
+      } catch (e) {
+        console.warn("[getInvoiceDetails] Error calculating upgrade discount:", e.message);
+      }
+    }
+
     if (couponCode) {
+      const cleanUpper = couponCode.toUpperCase().trim();
+      const safeCode = escapeRegex(cleanUpper);
       appliedCoupon = await mongoose.model("Coupon").findOne({
-        code: couponCode.toUpperCase().trim(),
+        $or: [
+          { code: cleanUpper },
+          { code: { $regex: new RegExp(`^${safeCode}$`, "i") } },
+          { couponId: cleanUpper },
+          { couponId: { $regex: new RegExp(`^${safeCode}$`, "i") } },
+        ],
       });
       if (appliedCoupon?.isActive) {
         let valid = true;
         if (appliedCoupon.expiresAt && new Date() > new Date(appliedCoupon.expiresAt)) valid = false;
-        if (appliedCoupon.maxUses !== null && appliedCoupon.usedCount >= appliedCoupon.maxUses) valid = false;
+        const hasMaxLimit = appliedCoupon.maxUses != null && Number(appliedCoupon.maxUses) > 0;
+        if (hasMaxLimit && appliedCoupon.usedCount >= appliedCoupon.maxUses) valid = false;
         if (appliedCoupon.appliesTo === "store") valid = false;
+        if (appliedCoupon.applicablePlan && appliedCoupon.applicablePlan !== "all" && plan.key !== appliedCoupon.applicablePlan) {
+          valid = false;
+        }
 
         if (valid && user) {
-          const inUsedBy =
-            appliedCoupon.usedBy &&
-            appliedCoupon.usedBy.some(
-              (id) => id.toString() === user._id.toString()
-            );
+          const couponTrackingId = getCouponUsageId(appliedCoupon);
+
+          const userDoc = await User.findById(user._id).select("usedCouponIds").lean();
+          const hasUsedThisId = hasUsedCouponId(userDoc?.usedCouponIds, couponTrackingId);
           const hasUsedInTx = await PaymentTransaction.exists({
             userId: user._id,
             status: "paid",
-            "paymentData.couponCode": couponCode.toUpperCase().trim(),
+            "paymentData.couponId": couponTrackingId,
           });
-          if (inUsedBy || hasUsedInTx) {
+
+          if (hasUsedThisId || hasUsedInTx) {
             valid = false;
           }
         }
@@ -3334,9 +3506,10 @@ export const getInvoiceDetails = asyncHandler(async (req, res) => {
           if (billingPeriod === "monthly" && appliedCoupon.monthlyDiscountValue != null) discountVal = appliedCoupon.monthlyDiscountValue;
           else if (billingPeriod === "yearly" && appliedCoupon.yearlyDiscountValue != null) discountVal = appliedCoupon.yearlyDiscountValue;
           
-          discount = appliedCoupon.discountType === "percentage"
+          const couponDisc = appliedCoupon.discountType === "percentage"
             ? Math.round((baseAmount * discountVal) / 100)
             : Math.min(discountVal, baseAmount);
+          discount += couponDisc;
         }
       } else {
         appliedCoupon = null;
@@ -3384,7 +3557,7 @@ export const getInvoiceDetails = asyncHandler(async (req, res) => {
     }
 
     const calculatedAmount = Math.max(baseAmount - discount, 0);
-    const finalAmount = pTx?.amount || calculatedAmount;
+    const finalAmount = pTx?.amount ?? calculatedAmount;
     if (pTx) {
       if (isCardTransaction(pTx)) {
         pTx.status = "cancelled";
@@ -3415,8 +3588,11 @@ export const getInvoiceDetails = asyncHandler(async (req, res) => {
         priceMonthly: plan.prices?.monthly || 0,
         priceYearly: plan.prices?.yearly || 0,
         billingPeriod,
+        originalAmount: baseAmount,
         amount: finalAmount,
         discount,
+        upgradeDiscount,
+        ppDaysUsed,
         transaction: pTx || null,
         walletReference: pTx ? extractWalletReference(pTx.paymentData, pTx.fawaterakResponse) : null,
         isPendingResume: isSubPending,

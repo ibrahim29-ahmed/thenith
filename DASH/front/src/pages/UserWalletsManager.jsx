@@ -34,6 +34,12 @@ import {
   FileText,
   PhoneCall,
   Link2,
+  BarChart3,
+  TrendingUp,
+  QrCode,
+  Calendar,
+  Users,
+  DollarSign,
 } from "lucide-react";
 import {
   fetchUserWallets,
@@ -47,6 +53,9 @@ import {
   uploadAdminImage,
   fetchOrders,
   updateOrderStatus,
+  fetchPackageSettings,
+  updatePackageSettings,
+  fetchPaymentTrafficAnalytics,
 } from "../services/adminApi.js";
 
 const DEFAULT_PROVIDERS = [
@@ -118,8 +127,36 @@ export default function UserWalletsManager() {
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
 
-  // Active View Tab: "wallets" (محافظ المستخدمين) | "payment_orders" (طلبات كروت وسائل الدفع) | "panel_settings" (إعدادات صفحة البانيل)
+  // Active View Tab: "wallets" | "payment_orders" | "package_settings" | "traffic_analytics" | "panel_settings"
   const [activeTab, setActiveTab] = useState("wallets");
+
+  // Package Settings (Day Rate & Users Usage Days) State
+  const [dayRate, setDayRate] = useState(3);
+  const [dayRateInput, setDayRateInput] = useState("3");
+  const [savingDayRate, setSavingDayRate] = useState(false);
+  const [packageUsers, setPackageUsers] = useState([]);
+  const [packageStats, setPackageStats] = useState({
+    totalUsersWithPlus: 0,
+    activeUsers: 0,
+    upgradedUsers: 0,
+    totalDiscountGiven: 0,
+  });
+  const [packageLoading, setPackageLoading] = useState(false);
+  const [packageSearchQuery, setPackageSearchQuery] = useState("");
+  const [packageStatusFilter, setPackageStatusFilter] = useState("all");
+
+  // Traffic Analytics (Cards vs Direct Link Visitors) State
+  const [trafficSummary, setTrafficSummary] = useState({
+    totalVisits: 0,
+    totalCardVisits: 0,
+    totalDirectVisits: 0,
+    usersCount: 0,
+    activeLinksCount: 0,
+  });
+  const [trafficUsers, setTrafficUsers] = useState([]);
+  const [trafficLoading, setTrafficLoading] = useState(false);
+  const [trafficSearchQuery, setTrafficSearchQuery] = useState("");
+  const [trafficSort, setTrafficSort] = useState("highest");
 
   // Payment Cards Orders State
   const [orders, setOrders] = useState([]);
@@ -302,6 +339,113 @@ export default function UserWalletsManager() {
     e.preventDefault();
     loadData();
   };
+
+  // Package Settings Handlers & Filtering
+  const loadPackageSettings = async () => {
+    try {
+      setPackageLoading(true);
+      const res = await fetchPackageSettings();
+      if (res?.success) {
+        setDayRate(res.dayRate ?? 3);
+        setDayRateInput(String(res.dayRate ?? 3));
+        setPackageUsers(res.users || []);
+        if (res.stats) setPackageStats(res.stats);
+      }
+    } catch (err) {
+      console.error("Failed to load package settings:", err);
+      showToast("تعذر تحميل إعدادات الباقة وسعر اليوم", "error");
+    } finally {
+      setPackageLoading(false);
+    }
+  };
+
+  const handleSaveDayRate = async (e) => {
+    if (e) e.preventDefault();
+    const num = Number(dayRateInput);
+    if (isNaN(num) || num < 0) {
+      showToast("يرجى إدخال سعر صالح لليوم (أكبر من أو يساوي 0)", "error");
+      return;
+    }
+    try {
+      setSavingDayRate(true);
+      const res = await updatePackageSettings({ dayRate: num });
+      if (res?.success) {
+        setDayRate(num);
+        showToast("تم حفظ سعر اليوم وتحديث خصم الترقية بنجاح", "success");
+        loadPackageSettings();
+      }
+    } catch (err) {
+      showToast(err?.response?.data?.message || err?.message || "تعذر حفظ سعر اليوم", "error");
+    } finally {
+      setSavingDayRate(false);
+    }
+  };
+
+  const filteredPackageUsers = useMemo(() => {
+    return packageUsers.filter((u) => {
+      if (packageStatusFilter !== "all" && u.status !== packageStatusFilter) {
+        return false;
+      }
+      if (packageSearchQuery.trim()) {
+        const q = packageSearchQuery.toLowerCase().trim();
+        const nameMatch = (u.name || "").toLowerCase().includes(q);
+        const emailMatch = (u.email || "").toLowerCase().includes(q);
+        const phoneMatch = (u.phone || "").toLowerCase().includes(q);
+        const userMatch = (u.username || "").toLowerCase().includes(q);
+        return nameMatch || emailMatch || phoneMatch || userMatch;
+      }
+      return true;
+    });
+  }, [packageUsers, packageStatusFilter, packageSearchQuery]);
+
+  // Traffic Analytics Handlers & Filtering
+  const loadTrafficAnalytics = async () => {
+    try {
+      setTrafficLoading(true);
+      const res = await fetchPaymentTrafficAnalytics();
+      if (res?.success) {
+        if (res.summary) setTrafficSummary(res.summary);
+        setTrafficUsers(res.users || []);
+      }
+    } catch (err) {
+      console.error("Failed to load traffic analytics:", err);
+      showToast("تعذر تحميل إحصائيات زوار كروت وروابط الدفع", "error");
+    } finally {
+      setTrafficLoading(false);
+    }
+  };
+
+  const filteredTrafficUsers = useMemo(() => {
+    let list = [...trafficUsers].filter((u) => {
+      if (trafficSearchQuery.trim()) {
+        const q = trafficSearchQuery.toLowerCase().trim();
+        const nameMatch = (u.name || "").toLowerCase().includes(q);
+        const userMatch = (u.username || "").toLowerCase().includes(q);
+        const pubMatch = (u.publicId || "").toLowerCase().includes(q);
+        const emailMatch = (u.email || "").toLowerCase().includes(q);
+        return nameMatch || userMatch || pubMatch || emailMatch;
+      }
+      return true;
+    });
+
+    if (trafficSort === "card") {
+      list.sort((a, b) => b.cardVisits - a.cardVisits);
+    } else if (trafficSort === "direct") {
+      list.sort((a, b) => b.directVisits - a.directVisits);
+    } else {
+      list.sort((a, b) => b.totalVisits - a.totalVisits);
+    }
+
+    return list;
+  }, [trafficUsers, trafficSearchQuery, trafficSort]);
+
+  useEffect(() => {
+    if (activeTab === "package_settings") {
+      loadPackageSettings();
+    } else if (activeTab === "traffic_analytics") {
+      loadTrafficAnalytics();
+    }
+  }, [activeTab]);
 
   // Search users for the Add Modal picker
   useEffect(() => {
@@ -568,6 +712,30 @@ export default function UserWalletsManager() {
             </button>
           )}
 
+          {activeTab === "package_settings" && (
+            <button
+              onClick={loadPackageSettings}
+              disabled={packageLoading}
+              className="flex items-center justify-center gap-2 h-11 px-5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-xs font-bold transition-colors cursor-pointer shadow-xs"
+              title="تحديث البيانات"
+            >
+              <RefreshCw className={`w-4 h-4 ${packageLoading ? "animate-spin text-emerald-600" : ""}`} />
+              <span>تحديث البيانات</span>
+            </button>
+          )}
+
+          {activeTab === "traffic_analytics" && (
+            <button
+              onClick={loadTrafficAnalytics}
+              disabled={trafficLoading}
+              className="flex items-center justify-center gap-2 h-11 px-5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-xs font-bold transition-colors cursor-pointer shadow-xs"
+              title="تحديث الإحصائيات"
+            >
+              <RefreshCw className={`w-4 h-4 ${trafficLoading ? "animate-spin text-indigo-600" : ""}`} />
+              <span>تحديث الإحصائيات</span>
+            </button>
+          )}
+
           {activeTab === "panel_settings" && (
             <button
               onClick={handleSavePanelConfig}
@@ -582,11 +750,11 @@ export default function UserWalletsManager() {
       </div>
 
       {/* ── Mode Navigation Tabs ── */}
-      <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 p-1.5 bg-slate-100 rounded-2xl border border-slate-200 max-w-2xl">
+      <div className="flex flex-wrap items-center gap-2 p-1.5 bg-slate-100 rounded-2xl border border-slate-200">
         <button
           type="button"
           onClick={() => setActiveTab("wallets")}
-          className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl text-xs sm:text-sm font-black transition-all cursor-pointer ${
+          className={`flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl text-xs sm:text-sm font-black transition-all cursor-pointer ${
             activeTab === "wallets"
               ? "bg-white text-indigo-700 shadow-sm border border-slate-200/80"
               : "text-slate-600 hover:text-slate-900"
@@ -599,7 +767,7 @@ export default function UserWalletsManager() {
         <button
           type="button"
           onClick={() => setActiveTab("payment_orders")}
-          className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl text-xs sm:text-sm font-black transition-all cursor-pointer ${
+          className={`flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl text-xs sm:text-sm font-black transition-all cursor-pointer ${
             activeTab === "payment_orders"
               ? "bg-white text-emerald-700 shadow-sm border border-slate-200/80"
               : "text-slate-600 hover:text-slate-900"
@@ -611,8 +779,34 @@ export default function UserWalletsManager() {
 
         <button
           type="button"
+          onClick={() => setActiveTab("package_settings")}
+          className={`flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl text-xs sm:text-sm font-black transition-all cursor-pointer ${
+            activeTab === "package_settings"
+              ? "bg-white text-emerald-700 shadow-sm border border-slate-200/80"
+              : "text-slate-600 hover:text-slate-900"
+          }`}
+        >
+          <Clock className="w-4 h-4 text-emerald-600" />
+          <span>سعر اليوم واستخدام الباقة</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveTab("traffic_analytics")}
+          className={`flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl text-xs sm:text-sm font-black transition-all cursor-pointer ${
+            activeTab === "traffic_analytics"
+              ? "bg-white text-indigo-700 shadow-sm border border-slate-200/80"
+              : "text-slate-600 hover:text-slate-900"
+          }`}
+        >
+          <BarChart3 className="w-4 h-4 text-indigo-600" />
+          <span>زوار كروت وروابط الدفع</span>
+        </button>
+
+        <button
+          type="button"
           onClick={() => setActiveTab("panel_settings")}
-          className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl text-xs sm:text-sm font-black transition-all cursor-pointer ${
+          className={`flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl text-xs sm:text-sm font-black transition-all cursor-pointer ${
             activeTab === "panel_settings"
               ? "bg-white text-indigo-700 shadow-sm border border-slate-200/80"
               : "text-slate-600 hover:text-slate-900"
@@ -1423,6 +1617,499 @@ export default function UserWalletsManager() {
       )}
 
       {/* ══════════════════════════════════════════════════════════════════════
+          TAB 3: PACKAGE SETTINGS & USAGE DAYS (سعر اليوم واستخدام باقة المدفوعات)
+      ══════════════════════════════════════════════════════════════════════ */}
+      {activeTab === "package_settings" && (
+        <div className="space-y-6 animate-in fade-in duration-300">
+          {/* Card 1: Day Rate Configuration */}
+          <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-xs relative overflow-hidden">
+            <div className="absolute top-0 end-0 w-64 h-64 bg-emerald-500/5 rounded-full blur-3xl pointer-events-none" />
+
+            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
+              <div className="max-w-2xl">
+                <div className="flex items-center gap-2.5 mb-2">
+                  <div className="w-9 h-9 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center font-bold">
+                    <DollarSign className="w-5 h-5" />
+                  </div>
+                  <h3 className="text-base sm:text-lg font-black text-slate-800">
+                    تحديد سعر اليوم لباقة المدفوعات (Thenith Payment Plus)
+                  </h3>
+                </div>
+                <p className="text-xs sm:text-sm text-slate-500 leading-relaxed">
+                  يُستخدم هذا السعر في احتساب خصم الترقية التلقائي إلى باقة Pro عند رغبة المشترك في الترقية.
+                  المعادلة التلقائية للنظام: <span className="font-bold text-slate-700">(عدد أيام استخدام باقة المدفوعات × سعر اليوم)</span> تُخصم مباشرة من قيمة اشتراك باقة برو.
+                </p>
+              </div>
+
+              {/* Input & Save Box */}
+              <form onSubmit={handleSaveDayRate} className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 shrink-0">
+                <div className="relative">
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.5"
+                    value={dayRateInput}
+                    onChange={(e) => setDayRateInput(e.target.value)}
+                    placeholder="3"
+                    className="w-full sm:w-44 px-4 py-3 rounded-xl border border-slate-300 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 text-slate-800 font-black text-center text-lg outline-none transition bg-slate-50"
+                  />
+                  <span className="absolute end-3 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400 pointer-events-none">
+                    ج.م / يوم
+                  </span>
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={savingDayRate || Number(dayRateInput) === dayRate}
+                  className="flex items-center justify-center gap-2 px-6 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 active:scale-95 disabled:opacity-40 text-white font-bold text-xs sm:text-sm transition-all shadow-md shadow-emerald-600/20 cursor-pointer"
+                >
+                  {savingDayRate ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                  <span>حفظ سعر اليوم</span>
+                </button>
+              </form>
+            </div>
+          </div>
+
+          {/* Stats Grid */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-xs">
+              <div className="flex items-center justify-between text-slate-500 text-xs font-bold mb-2">
+                <span>إجمالي مستخدمي الباقة</span>
+                <Users className="w-4 h-4 text-indigo-500" />
+              </div>
+              <div className="text-2xl sm:text-3xl font-black text-slate-800">
+                {packageStats.totalUsersWithPlus || packageUsers.length}
+              </div>
+              <p className="text-[11px] text-slate-400 mt-1">حسابات اشتركت بالباقة</p>
+            </div>
+
+            <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-xs">
+              <div className="flex items-center justify-between text-slate-500 text-xs font-bold mb-2">
+                <span>اشتراكات نشطة حالياً</span>
+                <CheckCircle2 className="w-4 h-4 text-emerald-500" />
+              </div>
+              <div className="text-2xl sm:text-3xl font-black text-emerald-600">
+                {packageStats.activeUsers || 0}
+              </div>
+              <p className="text-[11px] text-slate-400 mt-1">باقة المدفوعات مفعلة لديهم</p>
+            </div>
+
+            <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-xs">
+              <div className="flex items-center justify-between text-slate-500 text-xs font-bold mb-2">
+                <span>تمت ترقيتهم إلى Pro</span>
+                <Sparkles className="w-4 h-4 text-purple-500" />
+              </div>
+              <div className="text-2xl sm:text-3xl font-black text-purple-600">
+                {packageStats.upgradedUsers || 0}
+              </div>
+              <p className="text-[11px] text-slate-400 mt-1">استفادوا من خصم الترقية</p>
+            </div>
+
+            <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-xs">
+              <div className="flex items-center justify-between text-slate-500 text-xs font-bold mb-2">
+                <span>إجمالي الخصم المحسوب</span>
+                <Sparkles className="w-4 h-4 text-amber-500" />
+              </div>
+              <div className="text-2xl sm:text-3xl font-black text-amber-600 flex items-baseline gap-1">
+                <span>{packageStats.totalDiscountGiven || 0}</span>
+                <span className="text-xs font-bold text-slate-400">ج.م</span>
+              </div>
+              <p className="text-[11px] text-slate-400 mt-1">بناءً على سعر اليوم الحالي ({dayRate} ج.م)</p>
+            </div>
+          </div>
+
+          {/* Search & Filter Bar */}
+          <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-xs flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+            <div className="relative flex-1">
+              <Search className="w-4 h-4 text-slate-400 absolute start-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+              <input
+                type="text"
+                value={packageSearchQuery}
+                onChange={(e) => setPackageSearchQuery(e.target.value)}
+                placeholder="ابحث بالاسم، البريد الإلكتروني، اسم المستخدم، أو رقم الهاتف..."
+                className="w-full ps-10 pe-4 py-2.5 rounded-xl border border-slate-200 focus:border-indigo-500 text-xs sm:text-sm outline-none transition bg-slate-50/50"
+              />
+              {packageSearchQuery && (
+                <button
+                  type="button"
+                  onClick={() => setPackageSearchQuery("")}
+                  className="absolute end-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+
+            <div className="flex items-center gap-2">
+              <select
+                value={packageStatusFilter}
+                onChange={(e) => setPackageStatusFilter(e.target.value)}
+                className="px-3.5 py-2.5 rounded-xl border border-slate-200 bg-white text-xs font-bold text-slate-700 outline-none cursor-pointer focus:border-indigo-500"
+              >
+                <option value="all">جميع الحالات ({packageUsers.length})</option>
+                <option value="active">نشط حالياً</option>
+                <option value="upgraded_to_pro">تمت الترقية إلى Pro</option>
+                <option value="inactive">غير نشط / ملغي</option>
+              </select>
+
+              <button
+                type="button"
+                onClick={loadPackageSettings}
+                disabled={packageLoading}
+                className="p-2.5 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-600 transition cursor-pointer"
+                title="تحديث القائمة"
+              >
+                <RefreshCw className={`w-4 h-4 ${packageLoading ? "animate-spin text-indigo-600" : ""}`} />
+              </button>
+            </div>
+          </div>
+
+          {/* Users Usage Days Table */}
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
+            <div className="p-4 border-b border-slate-100 flex items-center justify-between">
+              <h4 className="text-sm font-black text-slate-800 flex items-center gap-2">
+                <Clock className="w-4 h-4 text-emerald-600" />
+                <span>سجل أيام استخدام المشتركين لباقة المدفوعات ({filteredPackageUsers.length})</span>
+              </h4>
+              <span className="text-xs text-slate-400 font-medium">
+                سعر اليوم المعتمد: <span className="font-bold text-emerald-600">{dayRate} ج.م</span>
+              </span>
+            </div>
+
+            {packageLoading ? (
+              <div className="py-20 flex flex-col items-center justify-center gap-3">
+                <Loader2 className="w-8 h-8 animate-spin text-indigo-600" />
+                <p className="text-xs text-slate-400 font-medium">جاري تحميل سجل استخدام المستخدمين...</p>
+              </div>
+            ) : filteredPackageUsers.length === 0 ? (
+              <div className="py-16 text-center text-slate-400 text-sm">
+                لا توجد بيانات مطابقة للبحث أو الفلتر
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-end text-xs">
+                  <thead className="bg-slate-50/70 border-b border-slate-200 text-slate-500 font-black">
+                    <tr>
+                      <th className="py-3 px-4">المستخدم</th>
+                      <th className="py-3 px-4">البريد والهاتف</th>
+                      <th className="py-3 px-4">تاريخ بدء الباقة</th>
+                      <th className="py-3 px-4">أيام الاستخدام</th>
+                      <th className="py-3 px-4">خصم الترقية المحسوب</th>
+                      <th className="py-3 px-4">الدورة</th>
+                      <th className="py-3 px-4">حالة الباقة</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {filteredPackageUsers.map((user) => (
+                      <tr key={user.id} className="hover:bg-slate-50/60 transition-colors">
+                        <td className="py-3.5 px-4">
+                          <div className="flex items-center gap-2.5">
+                            <div className="w-8 h-8 rounded-full bg-indigo-50 text-indigo-700 flex items-center justify-center font-bold text-xs shrink-0">
+                              {(user.name || "?")[0]}
+                            </div>
+                            <div>
+                              <p className="font-bold text-slate-800">{user.name}</p>
+                              <p className="text-[10px] text-slate-400 font-mono mt-0.5">
+                                @{user.username || user.publicId || user.id}
+                              </p>
+                            </div>
+                          </div>
+                        </td>
+
+                        <td className="py-3.5 px-4 text-slate-600 font-mono">
+                          <p>{user.email}</p>
+                          {user.phone && <p className="text-[10px] text-slate-400 mt-0.5">{user.phone}</p>}
+                        </td>
+
+                        <td className="py-3.5 px-4 text-slate-500">
+                          {user.startedAt
+                            ? new Date(user.startedAt).toLocaleDateString("ar-EG-u-nu-latn", {
+                                year: "numeric",
+                                month: "short",
+                                day: "numeric",
+                              })
+                            : "—"}
+                        </td>
+
+                        <td className="py-3.5 px-4">
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-100 text-slate-800 font-black border border-slate-200">
+                            <Clock className="w-3.5 h-3.5 text-indigo-500" />
+                            <span>{user.daysUsed} يوم</span>
+                          </span>
+                        </td>
+
+                        <td className="py-3.5 px-4">
+                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 font-black border border-emerald-200">
+                            <Sparkles className="w-3 h-3 text-emerald-500" />
+                            <span>-{user.upgradeDiscount} ج.م</span>
+                          </span>
+                        </td>
+
+                        <td className="py-3.5 px-4 text-slate-500 font-bold">
+                          {user.billingPeriod === "yearly" ? "سنوي" : "شهري"}
+                        </td>
+
+                        <td className="py-3.5 px-4">
+                          {user.status === "upgraded_to_pro" ? (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-purple-50 text-purple-700 font-bold border border-purple-200 text-[11px]">
+                              <span>✓ تمت الترقية لـ Pro</span>
+                            </span>
+                          ) : user.status === "active" ? (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 font-bold border border-emerald-200 text-[11px]">
+                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                              <span>مفعلة حالياً</span>
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-500 font-bold border border-slate-200 text-[11px]">
+                              <span>غير نشط</span>
+                            </span>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ══════════════════════════════════════════════════════════════════════
+          TAB 4: PAYMENT TRAFFIC ANALYTICS (زوار كروت وروابط الدفع)
+      ══════════════════════════════════════════════════════════════════════ */}
+      {activeTab === "traffic_analytics" && (
+        <div className="space-y-6 animate-in fade-in duration-300">
+          {/* Traffic Summary Cards */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-xs">
+              <div className="flex items-center justify-between text-slate-500 text-xs font-bold mb-2">
+                <span>زيارات كروت الدفع الذكية</span>
+                <CreditCard className="w-4 h-4 text-purple-500" />
+              </div>
+              <div className="text-2xl sm:text-3xl font-black text-purple-600 flex items-baseline gap-2">
+                <span>{trafficSummary.totalCardVisits || 0}</span>
+                <span className="text-xs font-bold text-slate-400">زيارة</span>
+              </div>
+              <p className="text-[11px] text-slate-400 mt-1">تلامس NFC أو مسح QR الكارت</p>
+            </div>
+
+            <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-xs">
+              <div className="flex items-center justify-between text-slate-500 text-xs font-bold mb-2">
+                <span>زيارات الرابط المباشر</span>
+                <Link2 className="w-4 h-4 text-indigo-500" />
+              </div>
+              <div className="text-2xl sm:text-3xl font-black text-indigo-600 flex items-baseline gap-2">
+                <span>{trafficSummary.totalDirectVisits || 0}</span>
+                <span className="text-xs font-bold text-slate-400">زيارة</span>
+              </div>
+              <p className="text-[11px] text-slate-400 mt-1">زيارات عبر رابط /pay المباشر</p>
+            </div>
+
+            <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-xs">
+              <div className="flex items-center justify-between text-slate-500 text-xs font-bold mb-2">
+                <span>إجمالي الزيارات الكلية</span>
+                <BarChart3 className="w-4 h-4 text-emerald-500" />
+              </div>
+              <div className="text-2xl sm:text-3xl font-black text-emerald-600 flex items-baseline gap-2">
+                <span>{trafficSummary.totalVisits || 0}</span>
+                <span className="text-xs font-bold text-slate-400">زيارة</span>
+              </div>
+              <p className="text-[11px] text-slate-400 mt-1">إجمالي الترافيك على منصة الدفع</p>
+            </div>
+
+            <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-xs">
+              <div className="flex items-center justify-between text-slate-500 text-xs font-bold mb-2">
+                <span>صفحات الدفع النشطة</span>
+                <Globe className="w-4 h-4 text-teal-500" />
+              </div>
+              <div className="text-2xl sm:text-3xl font-black text-slate-800">
+                {trafficSummary.activeLinksCount || 0}
+              </div>
+              <p className="text-[11px] text-slate-400 mt-1">حسابات تحتوي على محافظ وروابط</p>
+            </div>
+          </div>
+
+          {/* Search & Sort Controls */}
+          <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-xs flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+            <div className="relative flex-1">
+              <Search className="w-4 h-4 text-slate-400 absolute start-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+              <input
+                type="text"
+                value={trafficSearchQuery}
+                onChange={(e) => setTrafficSearchQuery(e.target.value)}
+                placeholder="ابحث باسم المستخدم، الرابط، أو البريد..."
+                className="w-full ps-10 pe-4 py-2.5 rounded-xl border border-slate-200 focus:border-indigo-500 text-xs sm:text-sm outline-none transition bg-slate-50/50"
+              />
+              {trafficSearchQuery && (
+                <button
+                  type="button"
+                  onClick={() => setTrafficSearchQuery("")}
+                  className="absolute end-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+
+            <div className="flex items-center gap-2">
+              <select
+                value={trafficSort}
+                onChange={(e) => setTrafficSort(e.target.value)}
+                className="px-3.5 py-2.5 rounded-xl border border-slate-200 bg-white text-xs font-bold text-slate-700 outline-none cursor-pointer focus:border-indigo-500"
+              >
+                <option value="highest">الأعلى زيارة إجمالاً</option>
+                <option value="card">الأعلى زيارة من الكارت الذكي</option>
+                <option value="direct">الأعلى زيارة من الرابط المباشر</option>
+              </select>
+
+              <button
+                type="button"
+                onClick={loadTrafficAnalytics}
+                disabled={trafficLoading}
+                className="p-2.5 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-600 transition cursor-pointer"
+                title="تحديث الإحصائيات"
+              >
+                <RefreshCw className={`w-4 h-4 ${trafficLoading ? "animate-spin text-indigo-600" : ""}`} />
+              </button>
+            </div>
+          </div>
+
+          {/* Traffic Table */}
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
+            <div className="p-4 border-b border-slate-100 flex items-center justify-between">
+              <h4 className="text-sm font-black text-slate-800 flex items-center gap-2">
+                <BarChart3 className="w-4 h-4 text-indigo-600" />
+                <span>تفاصيل زوار كروت وروابط الدفع ({filteredTrafficUsers.length})</span>
+              </h4>
+              <span className="text-xs text-slate-400 font-medium">
+                تتبع مباشر وتفصيلي لمصادر الزيارات
+              </span>
+            </div>
+
+            {trafficLoading ? (
+              <div className="py-20 flex flex-col items-center justify-center gap-3">
+                <Loader2 className="w-8 h-8 animate-spin text-indigo-600" />
+                <p className="text-xs text-slate-400 font-medium">جاري تحميل إحصائيات الزيارات...</p>
+              </div>
+            ) : filteredTrafficUsers.length === 0 ? (
+              <div className="py-16 text-center text-slate-400 text-sm">
+                لا توجد زيارات مسجلة حتى الآن
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-end text-xs">
+                  <thead className="bg-slate-50/70 border-b border-slate-200 text-slate-500 font-black">
+                    <tr>
+                      <th className="py-3 px-4">المستخدم</th>
+                      <th className="py-3 px-4">رابط الدفع المباشر</th>
+                      <th className="py-3 px-4">زيارات كارت الدفع (NFC/Card)</th>
+                      <th className="py-3 px-4">زيارات الرابط المباشر</th>
+                      <th className="py-3 px-4">إجمالي الزيارات</th>
+                      <th className="py-3 px-4">المحافظ</th>
+                      <th className="py-3 px-4">آخر زيارة</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {filteredTrafficUsers.map((item) => {
+                      const fullUrl = `${window.location.origin}${item.paymentUrl}`;
+                      return (
+                        <tr key={item.userId} className="hover:bg-slate-50/60 transition-colors">
+                          <td className="py-3.5 px-4">
+                            <div className="flex items-center gap-2.5">
+                              {item.avatar ? (
+                                <img
+                                  src={item.avatar}
+                                  alt=""
+                                  className="w-8 h-8 rounded-full object-cover border border-slate-200 shrink-0"
+                                />
+                              ) : (
+                                <div className="w-8 h-8 rounded-full bg-indigo-50 text-indigo-700 flex items-center justify-center font-bold text-xs shrink-0">
+                                  {(item.name || "?")[0]}
+                                </div>
+                              )}
+                              <div>
+                                <p className="font-bold text-slate-800">{item.name}</p>
+                                <p className="text-[10px] text-slate-400 font-mono mt-0.5">
+                                  @{item.username || item.publicId || item.userId}
+                                </p>
+                              </div>
+                            </div>
+                          </td>
+
+                          <td className="py-3.5 px-4">
+                            <div className="flex items-center gap-1.5 font-mono text-[11px] text-indigo-600 bg-indigo-50/60 px-2.5 py-1 rounded-lg border border-indigo-100 w-fit" dir="ltr">
+                              <span className="truncate max-w-[180px]">{item.paymentUrl}</span>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  navigator.clipboard.writeText(fullUrl);
+                                  showToast("تم نسخ الرابط", "success");
+                                }}
+                                className="text-slate-400 hover:text-indigo-600 p-0.5"
+                                title="نسخ الرابط"
+                              >
+                                <Copy className="w-3 h-3" />
+                              </button>
+                              <a
+                                href={item.paymentUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-slate-400 hover:text-indigo-600 p-0.5"
+                                title="فتح الرابط"
+                              >
+                                <ExternalLink className="w-3 h-3" />
+                              </a>
+                            </div>
+                          </td>
+
+                          <td className="py-3.5 px-4">
+                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-purple-50 text-purple-700 font-bold border border-purple-200">
+                              <CreditCard className="w-3.5 h-3.5 text-purple-500" />
+                              <span>{item.cardVisits} زيارة</span>
+                            </span>
+                          </td>
+
+                          <td className="py-3.5 px-4">
+                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-indigo-50 text-indigo-700 font-bold border border-indigo-200">
+                              <Link2 className="w-3.5 h-3.5 text-indigo-500" />
+                              <span>{item.directVisits} زيارة</span>
+                            </span>
+                          </td>
+
+                          <td className="py-3.5 px-4">
+                            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-50 text-emerald-800 font-black border border-emerald-200 text-xs">
+                              <TrendingUp className="w-3.5 h-3.5 text-emerald-600" />
+                              <span>{item.totalVisits}</span>
+                            </span>
+                          </td>
+
+                          <td className="py-3.5 px-4 text-slate-500 font-bold">
+                            {item.walletsCount} محفظة
+                          </td>
+
+                          <td className="py-3.5 px-4 text-slate-400 text-[11px]">
+                            {item.lastVisitAt
+                              ? new Date(item.lastVisitAt).toLocaleDateString("ar-EG-u-nu-latn", {
+                                  month: "short",
+                                  day: "numeric",
+                                  hour: "2-digit",
+                                  minute: "2-digit",
+                                })
+                              : "لا توجد زيارات"}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ══════════════════════════════════════════════════════════════════════
           TAB 2: PANEL CONFIGURATION (تخصيص أسماء وأيقونات وسائل الدفع)
       ══════════════════════════════════════════════════════════════════════ */}
       {activeTab === "panel_settings" && (
@@ -1588,561 +2275,6 @@ export default function UserWalletsManager() {
                   </div>
                 </div>
               ))}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ── Modal: Edit Provider Details (الاسم والأيقونة) ── */}
-      {editingProvider && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-sm">
-          <div className="w-full max-w-md bg-white rounded-3xl border border-slate-200 shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
-            <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4">
-              <h3 className="text-base font-black text-slate-800 flex items-center gap-2">
-                <Sliders className="w-5 h-5 text-indigo-600" />
-                <span>تعديل وسيلة: {editingProvider.nameAr}</span>
-              </h3>
-              <button
-                onClick={() => setEditingProvider(null)}
-                className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 flex items-center justify-center cursor-pointer"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            <div className="p-6 space-y-4 overflow-y-auto">
-              {/* Icon Preview & Custom Upload / URL */}
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-2">
-                  أيقونة / شعار الوسيلة
-                </label>
-                <div className="flex items-center gap-4 p-3 bg-slate-50 rounded-2xl border border-slate-200">
-                  <div className="w-16 h-16 rounded-2xl bg-white p-2 border border-slate-300 shadow-sm overflow-hidden shrink-0 flex items-center justify-center">
-                    <img src={editingProvider.icon} alt="" className="w-full h-full object-contain" />
-                  </div>
-                  <div className="flex-1 space-y-2">
-                    <input
-                      type="file"
-                      ref={fileInputRef}
-                      onChange={handleLogoUpload}
-                      accept="image/*"
-                      className="hidden"
-                    />
-                    <button
-                      type="button"
-                      disabled={uploadingLogo}
-                      onClick={() => fileInputRef.current?.click()}
-                      className="w-full py-2 px-3 rounded-xl bg-white border border-slate-200 hover:border-indigo-400 text-slate-700 text-xs font-bold flex items-center justify-center gap-1.5 transition-colors cursor-pointer shadow-2xs"
-                    >
-                      {uploadingLogo ? (
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                      ) : (
-                        <Upload className="w-4 h-4 text-indigo-600" />
-                      )}
-                      <span>رفع أيقونة جديدة</span>
-                    </button>
-                    <p className="text-[10px] text-slate-400 text-center">
-                      PNG أو SVG أو JPG بدقة عالية
-                    </p>
-                  </div>
-                </div>
-
-                <div className="mt-2">
-                  <span className="text-[10px] font-bold text-slate-500 block mb-1">
-                    أو أدخل مسار / رابط الصورة مباشرة:
-                  </span>
-                  <input
-                    type="text"
-                    value={editingProvider.icon}
-                    onChange={(e) =>
-                      setEditingProvider({ ...editingProvider, icon: e.target.value })
-                    }
-                    dir="ltr"
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2 px-3 text-xs font-bold text-slate-800 focus:bg-white focus:border-indigo-500 outline-none text-left"
-                  />
-                </div>
-              </div>
-
-              {/* Arabic Name */}
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1.5">
-                  الاسم بالعربية *
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={editingProvider.nameAr}
-                  onChange={(e) =>
-                    setEditingProvider({ ...editingProvider, nameAr: e.target.value })
-                  }
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2.5 px-3 text-xs font-bold text-slate-800 focus:bg-white focus:border-indigo-500 outline-none"
-                />
-              </div>
-
-              {/* English Name */}
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1.5">
-                  الاسم بالإنجليزية
-                </label>
-                <input
-                  type="text"
-                  dir="ltr"
-                  value={editingProvider.nameEn}
-                  onChange={(e) =>
-                    setEditingProvider({ ...editingProvider, nameEn: e.target.value })
-                  }
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2.5 px-3 text-xs font-bold text-slate-800 focus:bg-white focus:border-indigo-500 outline-none text-left"
-                />
-              </div>
-
-              {/* Badge / Short label */}
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1.5">
-                  الشارة المختصرة (Badge)
-                </label>
-                <input
-                  type="text"
-                  value={editingProvider.badge}
-                  onChange={(e) =>
-                    setEditingProvider({ ...editingProvider, badge: e.target.value })
-                  }
-                  placeholder="مثال: فودافون، انستاباي، أورنج..."
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2.5 px-3 text-xs font-bold text-slate-800 focus:bg-white focus:border-indigo-500 outline-none"
-                />
-              </div>
-
-              {/* Default Placeholder */}
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1.5">
-                  نص الرابط التوضيحي (Placeholder)
-                </label>
-                <input
-                  type="text"
-                  dir="ltr"
-                  value={editingProvider.placeholder || ""}
-                  onChange={(e) =>
-                    setEditingProvider({ ...editingProvider, placeholder: e.target.value })
-                  }
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2.5 px-3 text-xs font-bold text-slate-800 focus:bg-white focus:border-indigo-500 outline-none text-left"
-                />
-              </div>
-
-              {/* USSD Dial Code */}
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1.5 flex items-center justify-between">
-                  <span>كود التحويل المباشر (USSD)</span>
-                  <span className="text-[10px] text-slate-400 font-normal">
-                    اتركه فارغاً لتعطيل خيار الكود (مثل انستاباي)
-                  </span>
-                </label>
-                <input
-                  type="text"
-                  dir="ltr"
-                  value={editingProvider.ussdCode ?? ""}
-                  onChange={(e) =>
-                    setEditingProvider({ ...editingProvider, ussdCode: e.target.value })
-                  }
-                  placeholder="مثال: *9*7# أو #7115#"
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2.5 px-3 text-xs font-bold text-slate-800 focus:bg-white focus:border-indigo-500 outline-none text-left font-mono"
-                />
-                <p className="text-[10px] text-slate-400 mt-1 leading-relaxed">
-                  يتم فتح شاشة الاتصال بهذا الكود عند نقر الزائر على زر "التحويل من خلال الكود" (مثل *9*7# أو #7115#).
-                </p>
-              </div>
-
-              {/* Enable / Disable */}
-              <div className="flex items-center gap-2 pt-2">
-                <input
-                  type="checkbox"
-                  id="enableProvCheck"
-                  checked={editingProvider.enabled !== false}
-                  onChange={(e) =>
-                    setEditingProvider({ ...editingProvider, enabled: e.target.checked })
-                  }
-                  className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 cursor-pointer"
-                />
-                <label htmlFor="enableProvCheck" className="text-xs font-bold text-slate-700 cursor-pointer">
-                  تفعيل هذه الوسيلة وإتاحتها للمستخدمين في البانيل
-                </label>
-              </div>
-
-              <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
-                <button
-                  type="button"
-                  onClick={() => setEditingProvider(null)}
-                  className="px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-100 rounded-xl cursor-pointer"
-                >
-                  إلغاء
-                </button>
-                <button
-                  type="button"
-                  onClick={handleSaveProviderModal}
-                  className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer shadow-sm"
-                >
-                  <Check className="w-4 h-4" />
-                  <span>تطبيق التعديلات</span>
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ── Modal: Add Wallet for User ── */}
-      {isAddOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-sm">
-          <div className="w-full max-w-md bg-white rounded-3xl border border-slate-200 shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
-            <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4">
-              <h3 className="text-base font-black text-slate-800 flex items-center gap-2">
-                <Wallet className="w-5 h-5 text-indigo-600" />
-                <span>إضافة محفظة لمستخدم</span>
-              </h3>
-              <button
-                onClick={() => setIsAddOpen(false)}
-                className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 flex items-center justify-center cursor-pointer"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            <form onSubmit={handleAddSubmit} className="p-6 space-y-4 overflow-y-auto">
-              {/* User Selector */}
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1.5">
-                  اختر المستخدم *
-                </label>
-                {selectedUserObj ? (
-                  <div className="flex items-center justify-between p-3 rounded-xl bg-indigo-50 border border-indigo-200">
-                    <div>
-                      <p className="text-xs font-black text-indigo-900">{selectedUserObj.name}</p>
-                      <p className="text-[11px] text-indigo-600">{selectedUserObj.email}</p>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setSelectedUserObj(null);
-                        setAddForm({ ...addForm, userId: "" });
-                      }}
-                      className="text-xs font-bold text-indigo-700 hover:text-indigo-900 underline cursor-pointer"
-                    >
-                      تغيير
-                    </button>
-                  </div>
-                ) : (
-                  <div>
-                    <input
-                      type="text"
-                      value={userSearchText}
-                      onChange={(e) => setUserSearchText(e.target.value)}
-                      placeholder="ابحث باسم أو بريد المستخدم..."
-                      className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2 px-3 text-xs font-bold text-slate-800 focus:bg-white focus:border-indigo-500 outline-none"
-                    />
-                    <div className="mt-2 max-h-36 overflow-y-auto border border-slate-200 rounded-xl divide-y divide-slate-100">
-                      {isLoadingUsers ? (
-                        <div className="p-3 text-center text-xs text-slate-400">جاري البحث...</div>
-                      ) : usersList.length === 0 ? (
-                        <div className="p-3 text-center text-xs text-slate-400">لا يوجد مستخدمين</div>
-                      ) : (
-                        usersList.map((u) => (
-                          <div
-                            key={u._id}
-                            onClick={() => {
-                              setSelectedUserObj(u);
-                              setAddForm({ ...addForm, userId: u._id });
-                            }}
-                            className="p-2.5 hover:bg-slate-50 cursor-pointer flex items-center justify-between text-start"
-                          >
-                            <div>
-                              <p className="text-xs font-bold text-slate-800">{u.name}</p>
-                              <p className="text-[11px] text-slate-400">{u.email}</p>
-                            </div>
-                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-indigo-50 text-indigo-700">
-                              اختيار
-                            </span>
-                          </div>
-                        ))
-                      )}
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {/* Wallet Name */}
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1.5">
-                  اسم المحفظة *
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={addForm.name}
-                  onChange={(e) => setAddForm({ ...addForm, name: e.target.value })}
-                  placeholder="مثال: فودافون كاش، انستاباي الرئيسي"
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2.5 px-3 text-xs font-bold text-slate-800 focus:bg-white focus:border-indigo-500 outline-none"
-                />
-              </div>
-
-              {/* Provider Selection */}
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-2">
-                  نوع المحفظة *
-                </label>
-                <div className="grid grid-cols-2 gap-2">
-                  {currentProviders.map((p) => {
-                    const isChosen = addForm.provider === p.id;
-                    return (
-                      <button
-                        key={p.id}
-                        type="button"
-                        onClick={() => setAddForm({ ...addForm, provider: p.id })}
-                        className={`flex items-center gap-2.5 rounded-xl border p-2.5 text-start cursor-pointer transition-all ${
-                          isChosen
-                            ? "border-indigo-500 bg-indigo-50/80 ring-2 ring-indigo-500/20"
-                            : "border-slate-200 bg-white hover:border-slate-300"
-                        }`}
-                      >
-                        <div className="w-8 h-8 rounded-lg bg-white p-1 border border-slate-200 overflow-hidden shrink-0 flex items-center justify-center">
-                          <img src={p.icon} alt="" className="w-full h-full object-contain" />
-                        </div>
-                        <span className="text-xs font-bold text-slate-800 truncate">{p.nameAr}</span>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* Wallet Holder Name */}
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1.5">
-                  اسم صاحب المحفظة
-                </label>
-                <input
-                  type="text"
-                  value={addForm.accountName}
-                  onChange={(e) => setAddForm({ ...addForm, accountName: e.target.value })}
-                  placeholder="مثال: محمد أحمد"
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2.5 px-3 text-xs font-bold text-slate-800 focus:bg-white focus:border-indigo-500 outline-none"
-                />
-              </div>
-
-              {/* Wallet Phone Number */}
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1.5">
-                  رقم المحفظة
-                </label>
-                <input
-                  type="text"
-                  value={addForm.walletNumber}
-                  onChange={(e) => setAddForm({ ...addForm, walletNumber: e.target.value })}
-                  placeholder="010XXXXXXXX"
-                  dir="ltr"
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2.5 px-3 text-xs font-bold text-slate-800 focus:bg-white focus:border-indigo-500 outline-none font-mono"
-                />
-              </div>
-
-              {/* Direct Payment Link */}
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1.5">
-                  رابط الدفع المباشر (رابط ويب فقط)
-                </label>
-                <input
-                  type="url"
-                  value={addForm.link}
-                  onChange={(e) => setAddForm({ ...addForm, link: e.target.value })}
-                  placeholder="https://..."
-                  dir="ltr"
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2.5 px-3 text-xs font-bold text-slate-800 focus:bg-white focus:border-indigo-500 outline-none"
-                />
-                <p className="text-[10px] text-slate-400 mt-1">يجب أن يبدأ الرابط بـ https://</p>
-              </div>
-
-              <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
-                <button
-                  type="button"
-                  onClick={() => setIsAddOpen(false)}
-                  className="px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-100 rounded-xl cursor-pointer"
-                >
-                  إلغاء
-                </button>
-                <button
-                  type="submit"
-                  disabled={isSubmitting}
-                  className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
-                >
-                  {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
-                  <span>إضافة المحفظة</span>
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* ── Modal: Edit Wallet ── */}
-      {editItem && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-sm">
-          <div className="w-full max-w-md bg-white rounded-3xl border border-slate-200 shadow-2xl overflow-hidden flex flex-col">
-            <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4">
-              <h3 className="text-base font-black text-slate-800 flex items-center gap-2">
-                <Edit2 className="w-5 h-5 text-indigo-600" />
-                <span>تعديل محفظة: {editItem.user.name}</span>
-              </h3>
-              <button
-                onClick={() => setEditItem(null)}
-                className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 flex items-center justify-center cursor-pointer"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            <form onSubmit={handleEditSubmit} className="p-6 space-y-4">
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1.5">
-                  اسم المحفظة
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={editForm.name}
-                  onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2.5 px-3 text-xs font-bold text-slate-800 focus:bg-white focus:border-indigo-500 outline-none"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-2">
-                  نوع المحفظة
-                </label>
-                <div className="grid grid-cols-2 gap-2">
-                  {currentProviders.map((p) => {
-                    const isChosen = editForm.provider === p.id;
-                    return (
-                      <button
-                        key={p.id}
-                        type="button"
-                        onClick={() => setEditForm({ ...editForm, provider: p.id })}
-                        className={`flex items-center gap-2.5 rounded-xl border p-2.5 text-start cursor-pointer transition-all ${
-                          isChosen
-                            ? "border-indigo-500 bg-indigo-50/80 ring-2 ring-indigo-500/20"
-                            : "border-slate-200 bg-white hover:border-slate-300"
-                        }`}
-                      >
-                        <div className="w-8 h-8 rounded-lg bg-white p-1 border border-slate-200 overflow-hidden shrink-0 flex items-center justify-center">
-                          <img src={p.icon} alt="" className="w-full h-full object-contain" />
-                        </div>
-                        <span className="text-xs font-bold text-slate-800 truncate">{p.nameAr}</span>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* Wallet Holder Name */}
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1.5">
-                  اسم صاحب المحفظة
-                </label>
-                <input
-                  type="text"
-                  value={editForm.accountName}
-                  onChange={(e) => setEditForm({ ...editForm, accountName: e.target.value })}
-                  placeholder="مثال: محمد أحمد"
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2.5 px-3 text-xs font-bold text-slate-800 focus:bg-white focus:border-indigo-500 outline-none"
-                />
-              </div>
-
-              {/* Wallet Phone Number */}
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1.5">
-                  رقم المحفظة
-                </label>
-                <input
-                  type="text"
-                  value={editForm.walletNumber}
-                  onChange={(e) => setEditForm({ ...editForm, walletNumber: e.target.value })}
-                  placeholder="010XXXXXXXX"
-                  dir="ltr"
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2.5 px-3 text-xs font-bold text-slate-800 focus:bg-white focus:border-indigo-500 outline-none font-mono"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1.5">
-                  رابط الدفع المباشر
-                </label>
-                <input
-                  type="url"
-                  value={editForm.link}
-                  onChange={(e) => setEditForm({ ...editForm, link: e.target.value })}
-                  placeholder="https://..."
-                  dir="ltr"
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2.5 px-3 text-xs font-bold text-slate-800 focus:bg-white focus:border-indigo-500 outline-none"
-                />
-              </div>
-
-              <div className="flex items-center gap-2 pt-2">
-                <input
-                  type="checkbox"
-                  id="isActiveCheck"
-                  checked={editForm.isActive}
-                  onChange={(e) => setEditForm({ ...editForm, isActive: e.target.checked })}
-                  className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 cursor-pointer"
-                />
-                <label htmlFor="isActiveCheck" className="text-xs font-bold text-slate-700 cursor-pointer">
-                  تعيين هذه المحفظة كوسيلة أساسية للمستخدم
-                </label>
-              </div>
-
-              <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
-                <button
-                  type="button"
-                  onClick={() => setEditItem(null)}
-                  className="px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-100 rounded-xl cursor-pointer"
-                >
-                  إلغاء
-                </button>
-                <button
-                  type="submit"
-                  disabled={isSubmitting}
-                  className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
-                >
-                  {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-                  <span>حفظ التعديلات</span>
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* ── Modal: Delete Confirmation ── */}
-      {deleteConfirmItem && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-sm">
-          <div className="w-full max-w-sm bg-white rounded-3xl border border-slate-200 shadow-2xl overflow-hidden p-6 text-center">
-            <div className="w-14 h-14 rounded-2xl bg-rose-50 text-rose-600 flex items-center justify-center mx-auto mb-4">
-              <AlertTriangle className="w-7 h-7" />
-            </div>
-            <h3 className="text-base font-black text-slate-800 mb-2">تأكيد حذف المحفظة</h3>
-            <p className="text-xs text-slate-500 mb-6 leading-relaxed">
-              هل أنت متأكد من حذف محفظة &quot;{deleteConfirmItem.name}&quot; التابعة للمستخدم {deleteConfirmItem.user.name}؟ لن يتمكن العميل من استقبال التحويلات عليها.
-            </p>
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => setDeleteConfirmItem(null)}
-                className="flex-1 py-2.5 rounded-xl border border-slate-200 text-xs font-bold text-slate-600 hover:bg-slate-50 transition-colors cursor-pointer"
-              >
-                إلغاء
-              </button>
-              <button
-                type="button"
-                disabled={isDeleting}
-                onClick={confirmDeleteExecution}
-                className="flex-1 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold flex items-center justify-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50"
-              >
-                {isDeleting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
-                <span>نعم، حذف</span>
-              </button>
             </div>
           </div>
         </div>

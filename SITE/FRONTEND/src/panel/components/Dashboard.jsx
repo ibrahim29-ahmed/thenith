@@ -121,6 +121,7 @@ export default function Dashboard({ onLogout, onDeleteAccount }) {
   const { language, toggleLanguage, t } = useLanguage();
   const { theme, toggleTheme } = useTheme();
   const dashboard = useDashboardData();
+  const user = dashboard.owner || dashboard.dashboardData?.owner || {};
   const { cart } = useCart();
   const [isUploading, setIsUploading] = useState(false);
 
@@ -568,6 +569,8 @@ export default function Dashboard({ onLogout, onDeleteAccount }) {
                   cards={dashboard.cards}
                   activeCardLink={dashboard.activeCardLink}
                   activeCardId={dashboard.activeCardId}
+                  subscription={dashboard.dashboardData?.subscription}
+                  user={user}
                   onUpgrade={() => changeMainTab("subscriptions")}
                 />
               </motion.div>
@@ -834,6 +837,7 @@ export default function Dashboard({ onLogout, onDeleteAccount }) {
                 />
               </motion.div>
             )}
+
           </AnimatePresence>
           )}
 

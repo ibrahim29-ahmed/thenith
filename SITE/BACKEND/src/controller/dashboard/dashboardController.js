@@ -234,6 +234,8 @@ const getPaymentMethods = asyncHandler(async (req, res) => {
     );
   }
 
+  const subState = req.subscription;
+
   res.json({
     user: {
       username: user.username,
@@ -247,7 +249,9 @@ const getPaymentMethods = asyncHandler(async (req, res) => {
         ? user.paymentMethods[0].id
         : null),
     panelConfig: panelSetting?.value || null,
-    hasPaymentPlus,
+    hasPaymentPlus: subState?.paymentPlusActive || hasPaymentPlus,
+    paymentPlusDetails: subState?.paymentPlusDetails || null,
+    isPro: subState?.isPro || false,
     paymentPageSettings: user.paymentPageSettings || null,
   });
 });
@@ -305,6 +309,8 @@ const createPaymentMethod = asyncHandler(async (req, res) => {
   user.markModified("paymentMethods");
   await user.save();
 
+  invalidateProfileCacheForUser(user._id, user.publicId, user.username);
+
   res.status(201).json({
     success: true,
     paymentMethod: newMethod,
@@ -343,6 +349,8 @@ const updatePaymentMethod = asyncHandler(async (req, res) => {
   user.markModified("paymentMethods");
   await user.save();
 
+  invalidateProfileCacheForUser(user._id, user.publicId, user.username);
+
   res.json({
     success: true,
     paymentMethod: method,
@@ -369,6 +377,8 @@ const setActivePaymentMethod = asyncHandler(async (req, res) => {
 
   user.markModified("paymentMethods");
   await user.save();
+
+  invalidateProfileCacheForUser(user._id, user.publicId, user.username);
 
   res.json({
     success: true,
@@ -401,6 +411,8 @@ const deletePaymentMethod = asyncHandler(async (req, res) => {
   user.markModified("paymentMethods");
   await user.save();
 
+  invalidateProfileCacheForUser(user._id, user.publicId, user.username);
+
   res.json({
     success: true,
     paymentMethods: user.paymentMethods,
@@ -425,6 +437,8 @@ const updatePaymentPageSettings = asyncHandler(async (req, res) => {
 
   user.markModified("paymentPageSettings");
   await user.save();
+
+  invalidateProfileCacheForUser(user._id, user.publicId, user.username);
 
   res.json({
     success: true,

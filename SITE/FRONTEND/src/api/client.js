@@ -131,6 +131,10 @@ export const publicClient = axios.create({
 
 publicClient.interceptors.request.use((config) => {
   normalizeRequestConfig(config);
+  const token = readAuthToken();
+  if (token && !config.headers.Authorization) {
+    config.headers.Authorization = `Bearer ${token}`;
+  }
   const deviceIp = getCachedDeviceIp();
   if (deviceIp && !config.headers["X-Device-IP"]) {
     config.headers["X-Device-IP"] = deviceIp;

@@ -2,6 +2,13 @@ import mongoose from "mongoose";
 
 const couponSchema = new mongoose.Schema(
   {
+    couponId: {
+      type: String,
+      trim: true,
+      default: function () {
+        return "CPN-" + Math.random().toString(36).substring(2, 8).toUpperCase();
+      },
+    },
     code: {
       type: String,
       required: true,
@@ -32,6 +39,11 @@ const couponSchema = new mongoose.Schema(
     appliesTo: {
       type: String,
       enum: ["all", "store", "subscriptions"],
+      default: "all",
+    },
+    applicablePlan: {
+      type: String,
+      enum: ["all", "pro", "payment_plus"],
       default: "all",
     },
     applyMode: {

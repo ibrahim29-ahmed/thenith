@@ -195,7 +195,7 @@ export default function LandingPage() {
   }
 
   if (isAuthenticated) {
-    return <Navigate to={user?.publicId ? `/u/${user.publicId}` : "/u"} replace />;
+    return <Navigate to="/u" replace />;
   }
   const [hoverDash, setHoverDash] = useState(false);
   const [isScrolled, setIsScrolled] = useState(false);

@@ -104,6 +104,16 @@ const userSchema = new mongoose.Schema(
       displayName: { type: String, default: "" },
       description: { type: String, default: "" },
       isUnifiedHubEnabled: { type: Boolean, default: false },
+      analytics: {
+        cardVisits: { type: Number, default: 0 },
+        directVisits: { type: Number, default: 0 },
+        totalVisits: { type: Number, default: 0 },
+        lastVisitAt: { type: Date, default: null },
+      },
+    },
+    usedCouponIds: {
+      type: [String],
+      default: [],
     },
   },
   { timestamps: true },

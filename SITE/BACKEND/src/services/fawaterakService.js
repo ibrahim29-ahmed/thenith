@@ -16,6 +16,48 @@ import axios from "axios";
 import _env from "../config/env.js";
 const { env } = _env;
 
+function sanitizeCustomerText(value, fallback, maxLength = 100) {
+  const sanitized = String(value ?? "")
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^A-Za-z0-9@._,: -]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, maxLength);
+
+  return sanitized || fallback;
+}
+
+function sanitizeCustomerEmail(value) {
+  const email = String(value ?? "").trim().toLowerCase();
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
+    ? email
+    : "customer@thenith.com";
+}
+
+function isPublicHttpsUrl(value) {
+  try {
+    const url = new URL(String(value));
+    const hostname = url.hostname.toLowerCase();
+    return (
+      url.protocol === "https:" &&
+      hostname !== "localhost" &&
+      hostname !== "127.0.0.1" &&
+      hostname !== "::1"
+    );
+  } catch {
+    return false;
+  }
+}
+
+function getPublicRedirectionUrls({ successUrl, failUrl, pendingUrl, webhookUrl }) {
+  return Object.fromEntries(
+    Object.entries({ successUrl, failUrl, pendingUrl, webhookUrl }).filter(
+      ([, url]) => isPublicHttpsUrl(url),
+    ),
+  );
+}
+
 // ── In-memory token cache (single-process) ────────────────────────────────────
 let cachedToken = null;
 let tokenExpiresAt = 0;
@@ -24,6 +66,14 @@ let tokenExpiresAt = 0;
  * Returns a valid Bearer access token, fetching a new one if needed.
  */
 async function getAccessToken() {
+  if (!env.FAWATERAK_CLIENT_ID || !env.FAWATERAK_CLIENT_SECRET) {
+    const error = new Error(
+      "إعدادات Fawaterak غير مكتملة: يجب ضبط FAWATERAK_CLIENT_ID وFAWATERAK_CLIENT_SECRET في بيئة الخادم.",
+    );
+    error.code = "FAWATERAK_CONFIG_MISSING";
+    throw error;
+  }
+
   const now = Date.now();
   // Return cached token if it's still valid with a 60-second buffer
   if (cachedToken && now < tokenExpiresAt - 60_000) {
@@ -232,18 +282,25 @@ async function createTransaction(opts) {
     normalizeEgyptianPhone(customer.phone) ||
     cleanWallet ||
     "01000000000";
+  const redirectionUrls = getPublicRedirectionUrls({
+    successUrl,
+    failUrl,
+    pendingUrl,
+    webhookUrl,
+  });
 
   const payload = {
     cartTotal: Number(amount),
     currency: "EGP",
     customer: {
-      first_name: customer.firstName || "Customer",
-      last_name: customer.lastName || ".",
-      email: customer.email || "customer@thenith.com",
+      first_name: sanitizeCustomerText(customer.firstName, "Customer", 60),
+      last_name: sanitizeCustomerText(customer.lastName, "Customer", 60),
+      email: sanitizeCustomerEmail(customer.email),
       phone: cleanPhone,
-      address: customer.address || "Egypt",
-      customer_number: String(customer.userId || ""),
-      customer_unique_id: String(customer.userId || ""),
+      address: sanitizeCustomerText(customer.address, "Egypt", 150),
+      ...(customer.userId
+        ? { customer_unique_id: String(customer.userId) }
+        : {}),
     },
     cartItems: [
       {
@@ -252,18 +309,11 @@ async function createTransaction(opts) {
         quantity: 1,
       },
     ],
-    pay_load: {
+    payLoad: {
       order_id: String(orderId),
       order_type: orderType, // "store" | "subscription"
     },
-    redirectionUrls: {
-      successUrl,
-      failUrl,
-      pendingUrl,
-      backUrl: successUrl.replace(/\/payment\/success.*$/, "/pricing"),
-      webhookUrl,
-      ...(webhookUrl ? { webhook_url: webhookUrl } : {}),
-    },
+    ...(Object.keys(redirectionUrls).length > 0 ? { redirectionUrls } : {}),
     sendEmail: false,
     sendSMS: false,
     lang: "ar",
@@ -284,12 +334,20 @@ async function createTransaction(opts) {
       return client.post("/createTransaction", payload);
     }, 1, 1500);
   } catch (err) {
+    console.error("[Fawaterak] createTransaction failed", {
+      status: err.response?.status || null,
+      response: err.response?.data ?? null,
+      code: err.code || null,
+      message: err.message,
+    });
     if (err.code === "ECONNABORTED" || err.message?.includes("timeout")) {
       throw new Error("استغرقت العملية وقتاً أطول من المتوقع في معالجة طلبك. يرجى المحاولة مرة أخرى.");
     }
     const errData = err.response?.data;
     const cleanMsg = extractFawaterakErrorMessage(errData, err.message);
-    throw new Error(cleanMsg);
+    const gatewayError = new Error(cleanMsg);
+    if (err.code) gatewayError.code = err.code;
+    throw gatewayError;
   }
 
   const { data } = response;

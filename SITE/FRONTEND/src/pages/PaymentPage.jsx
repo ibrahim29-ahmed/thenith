@@ -375,8 +375,8 @@ export default function PaymentPage({ overrideParams, onClose }) {
 
   // Invoice State (from Backend Database - Single Source of Truth)
   const [invoice, setInvoice] = useState(null);
-  const amount = invoice?.amount 
-    ? invoice.amount 
+  const amount = invoice?.amount != null
+    ? invoice.amount
     : invoice 
       ? (billingPeriod === "yearly" ? invoice.priceYearly : invoice.priceMonthly) 
       : 0;
@@ -1500,12 +1500,12 @@ export default function PaymentPage({ overrideParams, onClose }) {
               )}
 
               {/* Pricing Breakdown from DB */}
-              {(invoice?.originalAmount != null || invoice?.shippingCost != null || invoice?.discount > 0) && (
+              {(invoice?.originalAmount != null || invoice?.shippingCost != null || invoice?.discount > 0 || invoice?.upgradeDiscount > 0) && (
                 <div className="space-y-2 text-xs text-slate-500 dark:text-slate-400 border-b border-slate-100 dark:border-slate-800 pb-3 mb-3">
                   {invoice?.originalAmount != null && (
                     <div className="flex justify-between">
                       <span>{isArabic ? "المجموع الفرعي" : "Subtotal"}</span>
-                      <span className="font-mono">{formatMoney((invoice.originalAmount || amount) - (invoice.shippingCost || 0) + (invoice.discount || 0))}</span>
+                      <span className="font-mono">{formatMoney(invoice.originalAmount ?? amount)}</span>
                     </div>
                   )}
                   {invoice?.shippingCost != null && Number(invoice.shippingCost) > 0 && (
@@ -1514,10 +1514,16 @@ export default function PaymentPage({ overrideParams, onClose }) {
                       <span className="font-mono">{formatMoney(invoice.shippingCost)}</span>
                     </div>
                   )}
-                  {invoice?.discount != null && Number(invoice.discount) > 0 && (
+                  {invoice?.upgradeDiscount != null && Number(invoice.upgradeDiscount) > 0 && (
                     <div className="flex justify-between text-emerald-600 dark:text-emerald-400 font-bold">
-                      <span>{isArabic ? "قيمة الخصم" : "Discount"}</span>
-                      <span className="font-mono">- {formatMoney(invoice.discount)}</span>
+                      <span>{isArabic ? `خصم ترقية باقة المدفوعات (${invoice.ppDaysUsed || ""} يوم)` : "Payment Plus Upgrade Discount"}</span>
+                      <span className="font-mono">- {formatMoney(invoice.upgradeDiscount)}</span>
+                    </div>
+                  )}
+                  {invoice?.discount != null && Number(invoice.discount - (invoice.upgradeDiscount || 0)) > 0 && (
+                    <div className="flex justify-between text-emerald-600 dark:text-emerald-400 font-bold">
+                      <span>{isArabic ? "كوبون الخصم" : "Discount"}</span>
+                      <span className="font-mono">- {formatMoney(invoice.discount - (invoice.upgradeDiscount || 0))}</span>
                     </div>
                   )}
                 </div>

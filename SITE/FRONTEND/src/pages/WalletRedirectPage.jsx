@@ -18,7 +18,7 @@ import {
 } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import { motion, AnimatePresence } from "framer-motion";
-import { publicClient } from "../api/client.js";
+import { publicClient, apiClient } from "../api/client.js";
 
 const WALLET_LOGOS = {
   vodafone_cash: "/wallets/vodafone-cash.png",
@@ -57,23 +57,36 @@ export default function WalletRedirectPage() {
   const params = useParams();
   const [searchParams] = useSearchParams();
 
-  // Extract identifier from params or pathname (supports /pay/:identifier and /m/:identifier)
+  // Extract identifier from params or pathname (supports /pay/:identifier, /pay/*, and /m/:identifier)
   const pathParts = window.location.pathname.split("/").filter(Boolean);
-  const identifier =
+  const rawId =
     params.identifier ||
+    params["*"] ||
     (["m", "pay"].includes(pathParts[0]?.toLowerCase())
       ? pathParts[1]
       : pathParts[0]) ||
     "";
+  const identifier = rawId.split("/")[0].trim();
   const payParam =
     searchParams.get("pay") ||
     (["m", "pay"].includes(pathParts[0]?.toLowerCase()) && pathParts[2]
       ? pathParts[2]
       : "");
 
-  const [loading, setLoading] = useState(true);
+  const targetId = identifier || "me";
+  const cacheStorageKey = `thenith_wallet_data_${targetId}_${payParam || "all"}`;
+
+  const [data, setData] = useState(() => {
+    try {
+      if (typeof window !== "undefined") {
+        const cached = sessionStorage.getItem(cacheStorageKey) || localStorage.getItem(cacheStorageKey);
+        if (cached) return JSON.parse(cached);
+      }
+    } catch {}
+    return null;
+  });
+  const [loading, setLoading] = useState(() => !data);
   const [error, setError] = useState(null);
-  const [data, setData] = useState(null);
 
   // Expanded wallet cards state: { [methodId]: boolean }
   const [expandedMap, setExpandedMap] = useState({});
@@ -86,49 +99,75 @@ export default function WalletRedirectPage() {
   const [copiedShareLink, setCopiedShareLink] = useState(false);
 
   useEffect(() => {
-    if (!identifier) {
-      setError("الرابط غير صالح، لم يتم تحديد المستفيد");
-      setLoading(false);
-      return;
-    }
-
     let isMounted = true;
-    setLoading(true);
+    if (!data) setLoading(true);
 
-    publicClient
-      .get(`/public/wallet/${encodeURIComponent(identifier)}`, {
-        params: payParam ? { pay: payParam } : {},
-      })
-      .then((res) => {
+    const fetchWallet = async (showLoading = false) => {
+      if (showLoading && !data) setLoading(true);
+      try {
+        const res = await publicClient.get(`/public/wallet/${encodeURIComponent(targetId)}`, {
+          params: payParam ? { pay: payParam } : {},
+        });
+
         if (!isMounted) return;
         if (res.data?.success) {
           setData(res.data);
-          const methods = Array.isArray(res.data.allMethods) && res.data.allMethods.length > 0
-            ? res.data.allMethods
-            : res.data.method ? [res.data.method] : [];
-
-          // Default: all wallet cards remain closed/collapsed until tapped
-          setExpandedMap({});
+          setError(null);
+          try {
+            sessionStorage.setItem(cacheStorageKey, JSON.stringify(res.data));
+            localStorage.setItem(cacheStorageKey, JSON.stringify(res.data));
+          } catch {}
         } else {
-          setError(res.data?.message || "تعذر العثور على وسائل الدفع المطلوبة");
+          if (!data) {
+            setError(res.data?.message || "تعذر العثور على وسائل الدفع المطلوبة");
+          }
         }
-      })
-      .catch((err) => {
+      } catch (err) {
         if (!isMounted) return;
-        setError(
-          err.response?.data?.message ||
-            err.response?.data?.error ||
-            "تعذر العثور على حساب المستفيد أو وسائل الدفع المطلوبة"
-        );
-      })
-      .finally(() => {
+        if (!data) {
+          const msg =
+            err.response?.data?.error?.message ||
+            err.response?.data?.message ||
+            (typeof err.response?.data?.error === "string" ? err.response?.data?.error : null) ||
+            err.message ||
+            "تعذر العثور على حساب المستفيد أو وسائل الدفع المطلوبة";
+          setError(msg);
+        }
+      } finally {
         if (isMounted) setLoading(false);
-      });
+      }
+    };
+
+    fetchWallet(false);
+
+    // Realtime listeners for instant synchronization
+    const handleRevalidate = () => fetchWallet(false);
+    window.addEventListener("focus", handleRevalidate);
+
+    let channel = null;
+    try {
+      channel = new BroadcastChannel("thenith_profile_sync");
+      channel.onmessage = () => fetchWallet(false);
+    } catch {}
+
+    const handleStorage = (e) => {
+      if (e.key === "thenith_profile_updated_at" || e.key?.startsWith("thenith_wallet_data_")) {
+        fetchWallet(false);
+      }
+    };
+    window.addEventListener("storage", handleStorage);
 
     return () => {
       isMounted = false;
+      window.removeEventListener("focus", handleRevalidate);
+      window.removeEventListener("storage", handleStorage);
+      if (channel) {
+        try {
+          channel.close();
+        } catch {}
+      }
     };
-  }, [identifier, payParam]);
+  }, [identifier, payParam, cacheStorageKey]);
 
   const user = data?.user;
   const panelConfig = data?.panelConfig;
@@ -293,10 +332,9 @@ export default function WalletRedirectPage() {
     }
     const ussdCode = getUssdCode(method.provider, number, configuredCode);
 
-    const qrValue =
-      method.link && /^https?:\/\//i.test(method.link)
-        ? method.link
-        : `${window.location.origin}/pay/${identifier}?pay=${method.customSlug || method.id}`;
+    // QR code value is strictly the primary payment page link
+    const primaryId = identifier && identifier !== "me" ? identifier : (user?.username || user?.publicId || identifier);
+    const qrValue = `${window.location.origin}/pay/${primaryId}`;
 
     return { pCfg, logo, title, app, number, holder, badge, ussdCode, qrValue };
   };
@@ -437,29 +475,34 @@ export default function WalletRedirectPage() {
                 3. If Thenith Payment Plus subscriber on unified hub:
                    → Full unified hub with all wallets list.
                ════════════════════════════════════════════════════════════════════ */}
-            {!canAccessUnifiedHub && !payParam && !isSingleMethod ? (
-              /* ── CASE 1: BLOCKED UNIFIED HUB (Requires Thenith Payment Plus) ── */
+            {/* ════════════════════════════════════════════════════════════════════
+                LEFT COLUMN:
+                1. If single method or payParam -> Dedicated single wallet card
+                2. If multiple methods -> Clean accordion list of wallets
+                3. If no methods -> Polite placeholder
+            ════════════════════════════════════════════════════════════════════ */}
+            {allMethods.length === 0 ? (
               <section className="col-span-1 lg:col-span-7 flex flex-col gap-4 lg:gap-6">
                 <nav className="flex items-center gap-2 p-1.5 bg-white/95 dark:bg-slate-900/40 dark:backdrop-blur-xl border border-slate-100 dark:border-slate-800/60 rounded-2xl shadow-sm lg:sticky lg:top-4 z-30 relative transition-colors duration-300">
                   <div className="flex-1 flex items-center justify-center gap-2 py-3 px-4 rounded-xl font-bold text-sm bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 shadow-sm transition-colors">
-                    <Lock className="w-4 h-4 text-amber-400" />
+                    <Wallet className="w-4 h-4 text-emerald-400 dark:text-emerald-600" />
                     <span>صفحة وسائل الدفع</span>
                   </div>
                 </nav>
 
                 <div className="profile-card bg-white dark:bg-slate-900/40 dark:backdrop-blur-xl rounded-[1.5rem] sm:rounded-3xl border border-slate-100 dark:border-slate-800/60 shadow-lg sm:shadow-xl dark:shadow-slate-950/20 p-8 sm:p-12 min-h-[460px] flex flex-col items-center justify-center text-center relative transition-colors duration-300">
-                  <div className="w-16 h-16 rounded-3xl bg-amber-500/10 text-amber-500 flex items-center justify-center mb-4 border border-amber-500/20 shadow-xs">
-                    <Lock className="w-8 h-8" />
+                  <div className="w-16 h-16 rounded-3xl bg-slate-100 dark:bg-slate-800 text-slate-400 flex items-center justify-center mb-4 border border-slate-200 dark:border-slate-700 shadow-xs">
+                    <Wallet className="w-8 h-8" />
                   </div>
                   <h3 className="text-lg font-black text-slate-900 dark:text-white mb-2">
-                    صفحة الدفع الموحدة غير مفعلة
+                    لا توجد وسائل دفع مضافة حالياً
                   </h3>
                   <p className="text-xs text-slate-500 dark:text-slate-400 max-w-sm leading-relaxed">
-                    هذا الرابط الموحد يتطلب اشتراكاً فعالاً في خدمة Thenith Payment Plus. لإتمام التحويل، يرجى استخدام رابط المحفظة المباشر الخاص بالمستفيد.
+                    لم يقم صاحب الحساب بإضافة محافظ أو وسائل دفع بعد.
                   </p>
                 </div>
               </section>
-            ) : (isSingleMethod || !canAccessUnifiedHub) && (allMethods[0] || data?.method) ? (
+            ) : isSingleMethod && (allMethods[0] || data?.method) ? (
               /* ── CASE 2: DEDICATED SINGLE WALLET SYSTEM (سيستم لوسيلة الدفع الواحدة) ── */
               (() => {
                 const targetM =
