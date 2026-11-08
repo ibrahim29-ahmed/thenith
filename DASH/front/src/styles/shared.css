@@ -82,3 +82,44 @@ button:active {
   font-variant-numeric: lining-nums tabular-nums;
   font-feature-settings: "lnum" 1, "tnum" 1;
 }
+
+.admin-shell {
+  min-width: 0;
+}
+
+.admin-shell :is(button, a, input, select, textarea):focus-visible {
+  outline: 2px solid rgba(79, 70, 229, 0.7);
+  outline-offset: 2px;
+}
+
+.admin-shell :is(input, select, textarea) {
+  max-width: 100%;
+}
+
+.admin-shell * {
+  scrollbar-width: thin;
+  scrollbar-color: #94a3b8 transparent;
+}
+
+.admin-shell ::-webkit-scrollbar {
+  display: block !important;
+  width: 8px;
+  height: 8px;
+}
+
+.admin-shell ::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: #cbd5e1;
+}
+
+.admin-shell ::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+.dark .admin-shell * {
+  scrollbar-color: #475569 transparent;
+}
+
+.dark .admin-shell ::-webkit-scrollbar-thumb {
+  background: #475569;
+}

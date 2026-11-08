@@ -3,6 +3,7 @@ import { motion } from "motion/react";
 import { trackClick } from "../../services/portfolioService.js";
 import { usePortfolio } from "../../lib/PortfolioContext.jsx";
 import { useLanguage } from "../../lib/LanguageContext.jsx";
+import { getSafeSiteLink } from "../../../utils/safeSiteLink.js";
 
 export default function SocialLinkCard({
   social,
@@ -12,12 +13,15 @@ export default function SocialLinkCard({
 }) {
   const { profile } = usePortfolio();
   const { language } = useLanguage();
+  const safeUrl = getSafeSiteLink(social.url);
 
   const handleClick = () => {
     if (profile?.id) {
-      trackClick(profile.id, social.url).catch(() => {});
+      trackClick(profile.id, safeUrl).catch(() => {});
     }
   };
+
+  if (!safeUrl) return null;
 
   return (
     <motion.a
@@ -26,7 +30,7 @@ export default function SocialLinkCard({
       transition={{ delay: index * 0.05, duration: 0.25, ease: "easeOut" }}
       whileHover={{ y: -2 }}
       whileTap={{ scale: 0.99 }}
-      href={social.url}
+      href={safeUrl}
       target="_blank"
       rel="noopener noreferrer"
       onClick={handleClick}
@@ -34,7 +38,7 @@ export default function SocialLinkCard({
       data-track-type="social"
       data-track-section="links"
       data-track-label={social.name}
-      data-track-url={social.url}
+      data-track-url={safeUrl}
       className={`w-full p-4 rounded-2xl border flex items-center justify-between group transition-all duration-300 shadow-sm ${themeClass}`}
     >
       <div className="flex items-center gap-4">

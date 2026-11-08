@@ -28,6 +28,7 @@ import {
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import toast from "react-hot-toast";
+import { getSafeSiteLink } from "../../../utils/safeSiteLink.js";
 import { useGlobalLanguage } from "../../../context/GlobalLanguageContext.jsx";
 import { useConfirm } from "../../context/ConfirmContext.jsx";
 import {
@@ -349,7 +350,8 @@ export default function PaymentMethodsSection({
 
   const handleOpenLink = (link) => {
     if (!link) return;
-    window.open(link, "_blank", "noopener,noreferrer");
+    const safeLink = getSafeSiteLink(link);
+    if (safeLink) window.open(safeLink, "_blank", "noopener,noreferrer");
   };
 
   const handleDeleteMethod = async (id, name) => {
@@ -820,7 +822,7 @@ export default function PaymentMethodsSection({
             const prov = getProviderInfo(method.provider);
             const ProvLogo = prov.Logo;
             const customLink = getCustomMethodLink(method);
-            const effectiveMethodLink = customLink;
+            const effectiveMethodLink = getSafeSiteLink(customLink);
             const isSelected = method.id === activePaymentMethodId;
 
             return (

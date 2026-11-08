@@ -10,6 +10,26 @@ const ALLOWED_TAGS = new Set([
   "a", "br", "span", "div", "hr", "code", "pre"
 ]);
 
+function sanitizeHref(value) {
+  if (/^(mailto:|tel:)/i.test(value)) return value;
+  if ((value.startsWith("/") && !value.startsWith("//")) || value.startsWith("#")) {
+    return value;
+  }
+
+  const candidate = value.startsWith("//") ? `https:${value}` : value;
+  try {
+    const url = new URL(candidate);
+    if (url.protocol !== "http:" && url.protocol !== "https:") return "";
+
+    const hostname = url.hostname.toLowerCase();
+    const isLocalhost = ["localhost", "127.0.0.1", "::1", "[::1]"].includes(hostname);
+    if (url.protocol === "http:" && !isLocalhost) url.protocol = "https:";
+    return url.href;
+  } catch {
+    return "";
+  }
+}
+
 export function sanitizeHtml(input) {
   if (!input || typeof input !== "string") return "";
 
@@ -43,17 +63,9 @@ export function sanitizeHtml(input) {
       const hrefMatch = attrsStr.match(/\bhref\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/i);
       if (hrefMatch) {
         const rawHref = (hrefMatch[1] || hrefMatch[2] || hrefMatch[3] || "").trim();
-        const lowerHref = rawHref.toLowerCase();
-        // Prevent javascript:, vbscript:, data: URIs
-        if (
-          lowerHref.startsWith("http://") ||
-          lowerHref.startsWith("https://") ||
-          lowerHref.startsWith("mailto:") ||
-          lowerHref.startsWith("tel:") ||
-          lowerHref.startsWith("/") ||
-          lowerHref.startsWith("#")
-        ) {
-          cleanAttrs += ` href="${rawHref.replace(/"/g, "&quot;")}" target="_blank" rel="noopener noreferrer"`;
+        const safeHref = sanitizeHref(rawHref);
+        if (safeHref) {
+          cleanAttrs += ` href="${safeHref.replace(/"/g, "&quot;")}" target="_blank" rel="noopener noreferrer"`;
         }
       }
     }

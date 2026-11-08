@@ -5,6 +5,7 @@ import { useGlobalLanguage } from "../context/GlobalLanguageContext.jsx";
 import { useSiteSettings } from "../context/SiteSettingsContext.jsx";
 import { useAuth } from "../context/AuthContext.jsx";
 import GlobalLogo from "./GlobalLogo.jsx";
+import { getSafeSiteLink } from "../utils/safeSiteLink.js";
 import {
   Mail,
   MessageCircle,
@@ -121,9 +122,9 @@ export default function MainFooter() {
   ];
 
   // Active social links only (non-empty URLs)
-  const activeSocials = socialPlatforms.filter(
-    (item) => item.url && typeof item.url === "string" && item.url.trim() !== ""
-  );
+  const activeSocials = socialPlatforms
+    .map((item) => ({ ...item, safeUrl: getSafeSiteLink(item.url) }))
+    .filter((item) => item.safeUrl);
 
   return (
     <footer className="relative z-10 w-full mt-auto bg-white/80 dark:bg-[#0d1117]/90 backdrop-blur-3xl pt-20 pb-12 px-6 border-t border-slate-200/80 dark:border-slate-800 transition-colors">
@@ -255,7 +256,7 @@ export default function MainFooter() {
               {activeSocials.map((platform) => (
                 <a
                   key={platform.id}
-                  href={platform.url}
+                  href={platform.safeUrl}
                   target="_blank"
                   rel="noopener noreferrer"
                   aria-label={platform.name}

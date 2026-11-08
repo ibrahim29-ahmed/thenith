@@ -63,54 +63,81 @@ export default function Overview() {
     );
 
   return (
-    <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
-      <div>
-        <h2 className="text-2xl font-bold text-slate-800">
+    <div className="space-y-6 animate-in fade-in slide-in-from-bottom-3 duration-500">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <p className="mb-2 text-[11px] font-bold uppercase tracking-[0.12em] text-indigo-600">
+            إدارة المنصة
+          </p>
+          <h2 className="text-2xl font-black tracking-tight text-slate-900 sm:text-3xl">
           نظرة عامة على المنصة
-        </h2>
-        <p className="text-slate-500 mt-1">
-          إحصائيات الأداء السريعة لليوم (متصل بالباك إند)
+          </h2>
+          <p className="mt-1 text-sm text-slate-500">
+            ملخص المستخدمين والاشتراكات والإيرادات والبطاقات.
+          </p>
+        </div>
+        <p className="text-xs font-medium text-slate-500">
+          {new Intl.DateTimeFormat("ar-EG", {
+            day: "numeric",
+            month: "long",
+            year: "numeric",
+          }).format(new Date())}
         </p>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 2xl:grid-cols-4">
         {stats.map((stat, idx) => {
           const Icon = stat.icon;
           return (
             <div
               key={idx}
-              className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 flex items-center gap-4"
+              className="flex min-h-28 items-center justify-between gap-4 rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm shadow-slate-900/[0.025] transition-shadow hover:shadow-md"
             >
-              <div
-                className={`w-14 h-14 rounded-xl flex items-center justify-center ${stat.bg} ${stat.color}`}
-              >
-                <Icon className="w-7 h-7" />
-              </div>
-              <div>
-                <p className="text-sm font-medium text-slate-500 mb-1">
+              <div className="min-w-0">
+                <p className="mb-2 text-xs font-semibold text-slate-500">
                   {stat.title}
                 </p>
-                <h3 className="text-2xl font-black text-slate-800">
+                <h3 className="text-2xl font-black tracking-tight text-slate-900 sm:text-3xl">
                   {stat.value}
                 </h3>
+              </div>
+              <div
+                className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-xl ${stat.bg} ${stat.color}`}
+              >
+                <Icon className="h-6 w-6" />
               </div>
             </div>
           );
         })}
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm min-h-[400px]">
-          <h3 className="text-lg font-bold text-slate-800 mb-6">
-            مصادر المستخدمين (Referrals)
-          </h3>
+      <div className="grid grid-cols-1 gap-5">
+        <div className="min-h-[390px] rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm sm:p-6">
+          <div className="mb-5 flex flex-wrap items-end justify-between gap-2 border-b border-slate-100 pb-4">
+            <div>
+              <h3 className="text-base font-black text-slate-900 sm:text-lg">
+                مصادر المستخدمين
+              </h3>
+              <p className="mt-1 text-xs text-slate-500">
+                توزيع التسجيلات حسب مصدر الإحالة
+              </p>
+            </div>
+            <span className="rounded-lg bg-slate-50 px-2.5 py-1 text-[11px] font-semibold text-slate-500">
+              Referrals
+            </span>
+          </div>
           {!data.referrers || data.referrers.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-64 text-slate-400">
-              <Activity className="w-12 h-12 mb-3 opacity-20" />
-              <p>لا توجد بيانات كافية للرسم البياني</p>
+            <div className="flex min-h-[270px] flex-col items-center justify-center text-center text-slate-500">
+              <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-xl bg-slate-50 text-slate-400">
+                <Activity className="h-6 w-6" />
+              </div>
+              <p className="text-sm font-bold text-slate-700">لا توجد بيانات كافية للرسم البياني</p>
+              <p className="mt-1 max-w-xs text-xs leading-5 text-slate-500">
+                ستظهر مصادر التسجيل هنا عند توفر بيانات الإحالة.
+              </p>
             </div>
           ) : (
-            <div className="h-72 w-full" >
+            <div className="h-[290px] w-full sm:h-[330px]">
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
                   <Pie

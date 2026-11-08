@@ -1,5 +1,5 @@
 import { NavLink, Outlet, useLocation } from "react-router-dom";
-import { LogOut, Bell, Search, ShieldCheck, X } from "lucide-react";
+import { LogOut, Bell, ShieldCheck, X, Menu } from "lucide-react";
 import { useAdminAuth } from "../context/AdminAuthContext.jsx";
 import { useState, useEffect } from "react";
 import DashboardLogo from "./DashboardLogo.jsx";
@@ -20,6 +20,11 @@ export default function AdminLayout() {
   const [siteName, setSiteName] = useState(
     () => localStorage.getItem("admin_site_name") || "Thenith"
   );
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
+  useEffect(() => {
+    setMobileMenuOpen(false);
+  }, [location.pathname]);
 
   useEffect(() => {
     fetchSiteSettings()
@@ -56,15 +61,35 @@ export default function AdminLayout() {
   }, [location.pathname, unreadTabCount, siteName]);
 
   const navItems = DASHBOARD_NAV_ITEMS.filter((item) => hasPermission(item.permission));
+  const activeNavItem = navItems.find((item) =>
+    item.path === "/" ? location.pathname === "/" : location.pathname.startsWith(item.path)
+  );
+  const currentPageLabel = location.pathname.startsWith("/cards/")
+    ? "تفاصيل الكارت الذكي"
+    : activeNavItem?.label || "لوحة التحكم";
 
   return (
     <div
-      className="min-h-screen bg-slate-50 flex text-slate-800"
+      className="admin-shell min-h-screen bg-slate-50 flex text-slate-800"
       style={{ fontFamily: '"Rubik", sans-serif' }}
     >
+      {mobileMenuOpen && (
+        <button
+          type="button"
+          aria-label="إغلاق القائمة الجانبية"
+          onClick={() => setMobileMenuOpen(false)}
+          className="fixed inset-0 z-40 bg-slate-950/45 backdrop-blur-[2px] lg:hidden"
+        />
+      )}
+
       {/* SIDEBAR */}
-      <aside className="w-72 bg-[#1d1d1f] text-white flex flex-col fixed inset-y-0 end-0 z-50">
-        <div className="h-20 flex items-center px-8 border-b border-white/10">
+      <aside
+        id="admin-sidebar"
+        className={`fixed inset-y-0 end-0 z-50 flex w-[min(86vw,18rem)] flex-col bg-[#1d1d1f] text-white transition-transform duration-300 lg:w-72 lg:translate-x-0 ${
+          mobileMenuOpen ? "translate-x-0" : "translate-x-full"
+        }`}
+      >
+        <div className="flex h-16 shrink-0 items-center justify-between border-b border-white/10 px-5 sm:h-20 sm:px-8">
           <div className="flex items-center gap-3">
             <ShieldCheck className="w-8 h-8 text-indigo-400" />
             <div>
@@ -74,11 +99,21 @@ export default function AdminLayout() {
               </p>
             </div>
           </div>
+          <button
+            type="button"
+            aria-label="إغلاق القائمة الجانبية"
+            onClick={() => setMobileMenuOpen(false)}
+            className="rounded-lg p-2 text-slate-400 transition-colors hover:bg-white/10 hover:text-white lg:hidden"
+          >
+            <X className="h-5 w-5" />
+          </button>
         </div>
 
-        <nav className="flex-1 px-4 py-8 space-y-2 overflow-y-auto">
+        <nav className="flex-1 space-y-1.5 overflow-y-auto px-3 py-5 sm:px-4 sm:py-7">
           {navItems.map((item) => {
-            const isActive = location.pathname === item.path;
+            const isActive = item.path === "/"
+              ? location.pathname === "/"
+              : location.pathname === item.path || location.pathname.startsWith(`${item.path}/`);
             const Icon = item.icon;
 
             return (
@@ -87,9 +122,10 @@ export default function AdminLayout() {
                 to={item.path}
                 end={item.path === "/dashboard"}
                 onClick={() => {
+                  setMobileMenuOpen(false);
                   if (item.id === "support") clearNotifications();
                 }}
-                className={`flex items-center justify-between px-4 py-3 rounded-xl font-medium transition-all ${
+                className={`flex items-center justify-between rounded-xl px-3.5 py-2.5 text-sm font-medium transition-all ${
                   isActive
                     ? "bg-indigo-600 text-white shadow-lg shadow-indigo-500/20"
                     : "text-slate-400 hover:bg-white/5 hover:text-white"
@@ -111,10 +147,10 @@ export default function AdminLayout() {
           })}
         </nav>
 
-        <div className="p-4 border-t border-white/10">
+        <div className="border-t border-white/10 p-3 sm:p-4">
           <button
             onClick={logout}
-            className="flex items-center gap-3 px-4 py-3 w-full rounded-xl font-medium text-rose-400 hover:bg-rose-500/10 transition-colors"
+            className="flex w-full items-center gap-3 rounded-xl px-4 py-3 font-medium text-rose-400 transition-colors hover:bg-rose-500/10"
           >
             <LogOut className="w-5 h-5" />
             تسجيل الخروج
@@ -123,19 +159,30 @@ export default function AdminLayout() {
       </aside>
 
       {/* MAIN CONTENT */}
-      <main className="flex-1 me-72 min-h-screen flex flex-col relative">
+      <main className="relative flex min-h-screen min-w-0 flex-1 flex-col lg:me-72">
         {/* TOP HEADER */}
-        <header className="h-20 bg-white border-b border-slate-200 px-8 flex items-center justify-between sticky top-0 z-40">
-          <div className="relative w-96">
-            <Search className="w-4 h-4 text-slate-400 absolute end-3.5 top-1/2 -translate-y-1/2" />
-            <input
-              type="text"
-              placeholder="ابحث عن مستخدم، اشتراك، أو قسم..."
-              className="w-full bg-slate-50 border border-slate-200/90 rounded-xl py-2.5 pe-11 ps-4 text-xs font-semibold text-slate-800 placeholder-slate-400 focus:bg-white focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 outline-none transition-all shadow-xs"
-            />
+        <header className="sticky top-0 z-30 flex min-h-16 items-center justify-between gap-3 border-b border-slate-200 bg-white/95 px-3 backdrop-blur sm:h-20 sm:px-6 lg:px-8">
+          <div className="flex min-w-0 flex-1 items-center gap-3">
+            <button
+              type="button"
+              aria-label="فتح القائمة الجانبية"
+              aria-expanded={mobileMenuOpen}
+              aria-controls="admin-sidebar"
+              onClick={() => setMobileMenuOpen(true)}
+              className="shrink-0 rounded-xl border border-slate-200 bg-white p-2.5 text-slate-700 shadow-sm transition-colors hover:bg-slate-50 lg:hidden"
+            >
+              <Menu className="h-5 w-5" />
+            </button>
+            <div className="hidden min-w-0 flex-col md:flex">
+              <span className="text-[10px] font-bold text-slate-400">لوحة الإدارة</span>
+              <span className="truncate text-sm font-bold text-slate-800">{currentPageLabel}</span>
+            </div>
+            <span className="min-w-0 truncate text-sm font-bold text-slate-800 md:hidden">
+              {currentPageLabel}
+            </span>
           </div>
 
-          <div className="flex items-center gap-6">
+          <div className="flex shrink-0 items-center gap-3 sm:gap-6">
             <div className="relative group">
               <button className="relative text-slate-500 hover:text-slate-800 transition-colors pt-2">
                 <Bell className="w-6 h-6" />
@@ -148,7 +195,7 @@ export default function AdminLayout() {
 
               {/* Notification Dropdown / Toast */}
               {latestMessage && navNotificationCount > 0 && (
-                <div className="absolute top-10 end-0 mt-2 w-72 bg-white rounded-xl shadow-xl border border-slate-100 p-4 animate-in fade-in slide-in-from-top-4 duration-300 z-50 opacity-0 group-hover:opacity-100 transition-opacity">
+                <div className="absolute top-10 end-0 z-50 mt-2 w-72 max-w-[calc(100vw-1rem)] rounded-xl border border-slate-100 bg-white p-4 opacity-0 shadow-xl transition-opacity duration-300 group-hover:opacity-100 animate-in fade-in slide-in-from-top-4">
                   <div className="flex justify-between items-center mb-2">
                     <span className="text-sm font-bold text-slate-800">
                       رسائل جديدة
@@ -201,8 +248,8 @@ export default function AdminLayout() {
               )}
             </div>
 
-            <div className="flex items-center gap-3 ps-4 border-s border-slate-200">
-              <div className="text-start">
+            <div className="flex items-center gap-2 border-s border-slate-200 ps-2 sm:gap-3 sm:ps-4">
+              <div className="hidden text-start sm:block">
                 <p className="text-sm font-bold text-slate-800">
                   {adminUser?.name || adminUser?.username || "Admin"}
                 </p>
@@ -212,7 +259,7 @@ export default function AdminLayout() {
                     : (adminUser?.title || "مشرف محدد الصلاحيات")}
                 </p>
               </div>
-              <div className="w-10 h-10 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center font-bold text-lg uppercase shadow-sm border border-indigo-200">
+              <div className="flex h-9 w-9 items-center justify-center rounded-full border border-indigo-200 bg-indigo-100 text-base font-bold uppercase text-indigo-600 shadow-sm sm:h-10 sm:w-10 sm:text-lg">
                 {(adminUser?.name || adminUser?.username || "A")[0]}
               </div>
             </div>
@@ -221,7 +268,7 @@ export default function AdminLayout() {
 
         {/* Toast Alert overlay for real-time pop */}
         {latestMessage && navNotificationCount > 0 && (
-          <div className="absolute top-24 end-8 w-80 bg-[#1d1d1f] text-white rounded-2xl shadow-[0_10px_40px_rgba(0,0,0,0.2)] p-4 animate-in slide-in-from-bottom-8 fade-in duration-300 z-50">
+          <div className="absolute end-3 top-20 z-50 w-80 max-w-[calc(100vw-1.5rem)] rounded-2xl bg-[#1d1d1f] p-4 text-white shadow-[0_10px_40px_rgba(0,0,0,0.2)] animate-in slide-in-from-bottom-8 fade-in duration-300 sm:end-8 sm:top-24">
             <div className="flex justify-between items-start mb-2">
               <div className="flex items-center gap-2">
                 <div className="w-8 h-8 bg-indigo-500/20 text-indigo-400 rounded-full flex items-center justify-center">
@@ -251,7 +298,7 @@ export default function AdminLayout() {
         )}
 
         {/* OUTLET */}
-        <div className="flex-1 p-8">
+        <div className="min-w-0 flex-1 p-3 sm:p-5 lg:p-8">
           <Outlet />
         </div>
       </main>

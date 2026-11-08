@@ -911,13 +911,13 @@ export default function SubscriptionsPage({
 
           {/* Top Billing Period Toggle (شهري / سنوي) */}
           <div className="flex flex-col items-center justify-center mb-8">
-            <div className="bg-slate-900/90 dark:bg-slate-900 backdrop-blur-md p-1.5 rounded-full flex items-center border border-slate-700/60 shadow-lg relative w-[340px] max-w-full">
+            <div className="bg-indigo-50/80 dark:bg-slate-900 backdrop-blur-md p-1.5 rounded-full flex items-center border border-indigo-100 dark:border-slate-700/60 shadow-lg shadow-indigo-100/70 dark:shadow-black/20 relative w-[340px] max-w-full">
               <button
                 type="button"
                 onClick={() => setIsAnnual(false)}
                 className={`flex-1 relative z-10 py-2.5 rounded-full font-bold text-sm sm:text-base transition-all duration-300 ${!isAnnual
                   ? "text-white"
-                  : "text-slate-400 hover:text-white"
+                  : "text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white"
                   }`}
               >
                 {t("monthlyPeriod")}
@@ -927,12 +927,12 @@ export default function SubscriptionsPage({
                 onClick={() => setIsAnnual(true)}
                 className={`flex-1 relative z-10 py-2.5 rounded-full font-bold text-sm sm:text-base transition-all duration-300 flex items-center justify-center gap-2 ${isAnnual
                   ? "text-white"
-                  : "text-slate-400 hover:text-white"
+                  : "text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white"
                   }`}
               >
                 <span>{t("annual")}</span>
                 {annualSavingPct > 0 && (
-                  <span className={`text-[10px] px-2 py-0.5 rounded-full font-black ${isAnnual ? "bg-white/20 text-white" : "bg-emerald-500/20 text-emerald-400 border border-emerald-500/20"}`}>
+                  <span className={`text-[10px] px-2 py-0.5 rounded-full font-black ${isAnnual ? "bg-white/20 text-white" : "bg-emerald-500/10 text-emerald-700 border border-emerald-500/20 dark:bg-emerald-500/20 dark:text-emerald-400"}`}>
                     {t("savePct")} {annualSavingPct}%
                   </span>
                 )}
@@ -1045,7 +1045,9 @@ export default function SubscriptionsPage({
               const pricing = getPlanPricing(plan);
               const features = getFeaturesList(plan);
               const isExpanded = Boolean(expandedFeatures[planKey]);
-              const visibleFeatures = isExpanded ? features : features.slice(0, 5);
+              const isPaymentPlus = plan.key === "payment_plus";
+              const initialFeatureCount = isPaymentPlus ? features.length : 9;
+              const visibleFeatures = isExpanded ? features : features.slice(0, initialFeatureCount);
 
               const planSubDetails = plan.key === "pro"
                 ? userSubscription?.activeSubscriptions?.pro
@@ -1067,10 +1069,10 @@ export default function SubscriptionsPage({
                   initial={{ opacity: 0, y: 15 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ duration: 0.25 }}
-                  className={`relative rounded-3xl sm:rounded-[32px] p-6 sm:p-8 shadow-2xl border text-white overflow-hidden flex flex-col justify-between ${
+                  className={`relative rounded-3xl sm:rounded-[32px] p-6 sm:p-8 shadow-2xl border text-slate-900 dark:text-white overflow-hidden flex flex-col justify-between ${
                     plan.key === "pro"
-                      ? "bg-slate-900 border-indigo-500/40 ring-1 ring-indigo-500/20 shadow-indigo-950/20"
-                      : "bg-slate-900 border-slate-800 shadow-slate-950/40"
+                      ? "bg-indigo-50/80 border-indigo-200 ring-1 ring-indigo-100 shadow-indigo-100 dark:bg-slate-900 dark:border-indigo-500/40 dark:ring-indigo-500/20 dark:shadow-indigo-950/20"
+                      : "bg-emerald-50/70 border-emerald-200 shadow-emerald-100 dark:bg-slate-900 dark:border-slate-800 dark:shadow-slate-950/40"
                   }`}
                 >
                   {/* Background Glow */}
@@ -1084,13 +1086,13 @@ export default function SubscriptionsPage({
                     {/* Header: Title, Description & Badge */}
                     <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3 mb-6">
                       <div>
-                        <h3 className="text-2xl sm:text-3xl font-black text-white flex items-center gap-2">
+                        <h3 className="text-2xl sm:text-3xl font-black text-slate-900 dark:text-white flex items-center gap-2">
                           <span>{planName}</span>
                           {isThisSubscribed && (
                             <BadgeCheck className="w-6 h-6 text-emerald-400" />
                           )}
                         </h3>
-                        <p className="text-slate-400 text-xs sm:text-sm mt-1 leading-relaxed">
+                        <p className="text-slate-600 dark:text-slate-400 text-xs sm:text-sm mt-1 leading-relaxed">
                           {plan.key === "payment_plus"
                             ? (isArabic
                                 ? "صفحة ورابط الدفع الموحد لكافة محافظك الإلكترونية"
@@ -1128,7 +1130,7 @@ export default function SubscriptionsPage({
                             <span>{t("mostFeatured")}</span>
                           </div>
                         ) : (
-                          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-slate-800 text-slate-300 border border-slate-700 text-xs font-bold">
+                          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-slate-100 text-slate-600 border border-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700 text-xs font-bold">
                             <span>{isArabic ? "باقة الدفع" : "Payment Hub"}</span>
                           </div>
                         )}
@@ -1146,27 +1148,27 @@ export default function SubscriptionsPage({
                               [planKey]: !prev[planKey],
                             }))
                           }
-                          className="w-full flex items-center justify-between p-3.5 bg-white/5 hover:bg-white/10 border border-white/10 rounded-2xl text-xs font-bold text-indigo-200 transition-colors cursor-pointer"
+                          className="w-full flex items-center justify-between p-3.5 bg-indigo-50 hover:bg-indigo-100 border border-indigo-100 dark:bg-white/5 dark:hover:bg-white/10 dark:border-white/10 rounded-2xl text-xs font-bold text-indigo-700 dark:text-indigo-200 transition-colors cursor-pointer"
                         >
                           <span className="flex items-center gap-2">
                             <Calendar className="w-4 h-4 text-indigo-400 shrink-0" />
                             <span>{t("currentSubDetails")}</span>
                           </span>
-                          <span className="flex items-center gap-1.5 text-[11px] text-slate-400">
+                          <span className="flex items-center gap-1.5 text-[11px] text-slate-500 dark:text-slate-400">
                             <span>{expandedSubDetails[planKey] ? (isArabic ? "إخفاء التفاصيل" : "Hide") : (isArabic ? "إظهار التفاصيل" : "Show")}</span>
                             {expandedSubDetails[planKey] ? (
-                              <ChevronUp className="w-4 h-4 text-slate-400" />
+                              <ChevronUp className="w-4 h-4 text-slate-500 dark:text-slate-400" />
                             ) : (
-                              <ChevronDown className="w-4 h-4 text-slate-400" />
+                              <ChevronDown className="w-4 h-4 text-slate-500 dark:text-slate-400" />
                             )}
                           </span>
                         </button>
 
                         {/* Collapsible Details Content */}
                         {expandedSubDetails[planKey] && (
-                          <div className="mt-2.5 p-4 sm:p-5 bg-white/5 backdrop-blur-md border border-white/10 rounded-2xl sm:rounded-3xl space-y-3 text-xs sm:text-sm animate-in fade-in slide-in-from-top-2 duration-200">
-                            <div className="flex items-center justify-between border-b border-white/10 pb-2.5">
-                              <span className="text-slate-400 text-xs font-bold">
+                          <div className="mt-2.5 p-4 sm:p-5 bg-white/70 dark:bg-white/5 backdrop-blur-md border border-slate-200 dark:border-white/10 rounded-2xl sm:rounded-3xl space-y-3 text-xs sm:text-sm animate-in fade-in slide-in-from-top-2 duration-200">
+                            <div className="flex items-center justify-between border-b border-slate-200 dark:border-white/10 pb-2.5">
+                              <span className="text-slate-600 dark:text-slate-400 text-xs font-bold">
                                 {isArabic ? "حالة الاشتراك" : "Status"}
                               </span>
                               <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 text-[11px] font-bold">
@@ -1178,7 +1180,7 @@ export default function SubscriptionsPage({
                             <div className="space-y-2.5 pt-0.5">
                               {cardExpiresAt && (
                                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 sm:gap-4 py-0.5">
-                                  <span className="text-slate-400 text-xs shrink-0">
+                                  <span className="text-slate-600 dark:text-slate-400 text-xs shrink-0">
                                     {t("expiryDate")} / {t("renewalDate")}:
                                   </span>
                                   <div className="flex items-center gap-2 flex-wrap">
@@ -1189,7 +1191,7 @@ export default function SubscriptionsPage({
                                       <span className={`text-[11px] px-2.5 py-0.5 rounded-full font-bold border ${
                                         isCurrentExpiring 
                                           ? "bg-amber-500/15 text-amber-300 border-amber-500/30" 
-                                          : "bg-slate-800 text-slate-300 border-slate-700"
+                                          : "bg-slate-100 text-slate-600 border-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700"
                                       }`}>
                                         {cardDaysLeft === 0
                                           ? (isArabic ? "ينتهي اليوم" : "Expires today")
@@ -1201,9 +1203,9 @@ export default function SubscriptionsPage({
                               )}
 
                               {cardBillingPeriod && (
-                                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 sm:gap-4 py-0.5 border-t border-white/5 pt-2">
-                                  <span className="text-slate-400 text-xs shrink-0">{t("billingCycle")}:</span>
-                                  <span className="font-bold text-indigo-200 text-xs sm:text-sm">
+                                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 sm:gap-4 py-0.5 border-t border-slate-200 dark:border-white/5 pt-2">
+                                  <span className="text-slate-600 dark:text-slate-400 text-xs shrink-0">{t("billingCycle")}:</span>
+                                  <span className="font-bold text-indigo-700 dark:text-indigo-200 text-xs sm:text-sm">
                                     {cardBillingPeriod === "yearly"
                                       ? (isArabic ? "سنوي" : t("annual"))
                                       : (isArabic ? "شهري" : t("monthlyPeriod"))}
@@ -1225,7 +1227,7 @@ export default function SubscriptionsPage({
                             -{pricing.upgradeDiscountAmount} {isArabic ? "ج.م" : "EGP"}
                           </span>
                         </div>
-                        <p className="text-[11px] text-slate-300 leading-relaxed">
+                        <p className="text-[11px] text-slate-700 dark:text-slate-300 leading-relaxed">
                           {isArabic
                             ? `عدد أيام استخدامك لباقة المدفوعات (${pricing.ppDaysUsed} يوم) تم احتسابها كخصم مباشر يُخصم من قيمة اشتراك باقة برو.`
                             : `Your ${pricing.ppDaysUsed} active days on Payment Plus have been applied as a direct discount on Pro.`}
@@ -1238,7 +1240,7 @@ export default function SubscriptionsPage({
                       <div className="mb-4">
                         {(pricing.discountAmount > 0 || pricing.upgradeDiscountAmount > 0) && (
                           <div className="flex flex-wrap items-center gap-2 mb-1.5">
-                            <span className="text-slate-400 line-through text-sm sm:text-base" dir="ltr">
+                            <span className="text-slate-500 dark:text-slate-400 line-through text-sm sm:text-base" dir="ltr">
                               {pricing.originalPrice} {isArabic ? "ج.م" : "EGP"}
                             </span>
                             {pricing.discountAmount > 0 && (
@@ -1254,11 +1256,11 @@ export default function SubscriptionsPage({
                           </div>
                         )}
                         <div className="flex items-baseline gap-2">
-                          <span className="text-3xl sm:text-4xl font-black text-white" dir="ltr">
+                          <span className="text-3xl sm:text-4xl font-black text-slate-900 dark:text-white" dir="ltr">
                             {pricing.finalPrice}
                             <span className="text-lg ms-1.5">{isArabic ? "ج.م" : "EGP"}</span>
                           </span>
-                          <span className="text-slate-400 font-bold text-xs sm:text-sm">
+                          <span className="text-slate-600 dark:text-slate-400 font-bold text-xs sm:text-sm">
                             / {isAnnual ? t("perYear") : t("perMonth")}
                           </span>
                         </div>
@@ -1267,7 +1269,7 @@ export default function SubscriptionsPage({
 
                     {/* In-Card Coupon Code Section (Inside each subscription) */}
                     {(!isThisSubscribed || isCurrentExpiring || isSwitchingPeriod) && (
-                      <div className="mb-5 pt-3 border-t border-slate-800">
+                      <div className="mb-5 pt-3 border-t border-slate-200 dark:border-slate-800">
                         {appliedCoupons[plan.key] ? (
                           <div className="flex items-center justify-between bg-emerald-500/10 border border-emerald-500/20 px-3 py-2 rounded-xl text-xs">
                             <div className="flex items-center gap-2 text-emerald-400 font-bold">
@@ -1300,7 +1302,7 @@ export default function SubscriptionsPage({
                                 }}
                                 placeholder={isArabic ? "أدخل كود الخصم" : "Enter coupon code"}
                                 disabled={couponLoadingPlanKey === plan.key}
-                                className="flex-1 bg-slate-800 border border-slate-700 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 rounded-xl px-3 py-1.5 text-xs text-white placeholder-slate-400 outline-none transition"
+                                className="flex-1 bg-white border border-slate-300 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 rounded-xl px-3 py-1.5 text-xs text-slate-900 placeholder-slate-400 outline-none transition dark:bg-slate-800 dark:border-slate-700 dark:text-white"
                                 onKeyDown={(e) => {
                                   if (e.key === "Enter") {
                                     e.preventDefault();
@@ -1320,7 +1322,7 @@ export default function SubscriptionsPage({
                               <button
                                 type="button"
                                 onClick={() => setOpenCouponPlanKey(null)}
-                                className="p-1.5 text-slate-400 hover:text-white rounded-xl hover:bg-slate-800 transition cursor-pointer"
+                                className="p-1.5 text-slate-500 hover:text-slate-900 rounded-xl hover:bg-slate-100 transition cursor-pointer dark:text-slate-400 dark:hover:text-white dark:hover:bg-slate-800"
                               >
                                 <X className="w-3.5 h-3.5" />
                               </button>
@@ -1457,25 +1459,28 @@ export default function SubscriptionsPage({
                   </div>
 
                   {/* Features Section */}
-                  <div className="pt-6 border-t border-slate-800">
-                    <p className="text-xs font-bold text-indigo-300 mb-3.5">
+                  <div className="pt-6 border-t border-slate-200 dark:border-slate-800">
+                    <p className={`text-xs font-bold mb-3.5 ${isPaymentPlus ? "text-emerald-700 dark:text-emerald-300" : "text-indigo-700 dark:text-indigo-300"}`}>
                       {isArabic ? "المميزات المضمنة في الباقة:" : "Included features:"}
                     </p>
 
-                    <div className="space-y-3">
+                    <div className="space-y-2">
                       {visibleFeatures.map((feature, i) => (
-                        <div key={i} className="flex items-start gap-2.5">
-                          <div className="w-5 h-5 rounded-full bg-indigo-500/20 flex items-center justify-center shrink-0 mt-0.5">
-                            <Check className="w-3.5 h-3.5 text-indigo-400" />
+                        <div
+                          key={i}
+                          className={`flex items-start gap-2.5 rounded-xl border bg-white/70 dark:bg-white/[0.025] px-3 py-2.5 ${isPaymentPlus ? "border-emerald-500/20" : "border-indigo-500/20"}`}
+                        >
+                          <div className={`w-5 h-5 rounded-full flex items-center justify-center shrink-0 mt-0.5 ${isPaymentPlus ? "bg-emerald-500/15" : "bg-indigo-500/20"}`}>
+                            <Check className={`w-3.5 h-3.5 ${isPaymentPlus ? "text-emerald-700 dark:text-emerald-400" : "text-indigo-700 dark:text-indigo-400"}`} />
                           </div>
-                          <span className="text-slate-300 text-xs sm:text-sm font-medium">
+                          <span className="text-slate-700 dark:text-slate-300 text-xs sm:text-sm font-medium leading-relaxed">
                             {feature}
                           </span>
                         </div>
                       ))}
                     </div>
 
-                    {features.length > 5 && (
+                    {features.length > initialFeatureCount && !isPaymentPlus && (
                       <button
                         type="button"
                         onClick={() =>
@@ -1484,7 +1489,7 @@ export default function SubscriptionsPage({
                             [planKey]: !prev[planKey],
                           }))
                         }
-                        className="mt-4 flex items-center justify-center gap-1.5 w-full py-2 rounded-xl border border-slate-700 text-slate-400 hover:text-white hover:bg-slate-800 transition-colors font-medium text-xs cursor-pointer"
+                        className="mt-4 flex items-center justify-center gap-1.5 w-full py-2 rounded-xl border border-slate-300 text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition-colors font-medium text-xs cursor-pointer dark:border-slate-700 dark:text-slate-400 dark:hover:text-white dark:hover:bg-slate-800"
                       >
                         {isExpanded ? (
                           <>
@@ -1494,7 +1499,7 @@ export default function SubscriptionsPage({
                         ) : (
                           <>
                             <ChevronDown className="w-3.5 h-3.5" />
-                            <span>{`${t("showMoreFeatures")} (${features.length - 5})`}</span>
+                            <span>{`${t("showMoreFeatures")} (${features.length - initialFeatureCount})`}</span>
                           </>
                         )}
                       </button>
@@ -1542,7 +1547,7 @@ export default function SubscriptionsPage({
               {/* Alert Message in Fluent Arabic as requested */}
               <p className="text-sm text-slate-200 leading-relaxed mb-6 font-medium bg-slate-800/80 p-4 rounded-2xl border border-slate-700/60 shadow-inner">
                 {isArabic
-                  ? "سيتم إلغاء الاشتراك الشهري ويتم تفعيل الباقة السنوية حال الدفع."
+                  ? "سيتم إلغاء الاشتراك الشهري والذهاب للدفع حال التأكيد."
                   : "Your monthly subscription will be cancelled, and the annual plan will be activated upon payment."}
               </p>
 

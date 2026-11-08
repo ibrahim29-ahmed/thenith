@@ -39,6 +39,7 @@ import { useCart } from "../../context/CartContext.jsx";
 import api from "../../api/index.js";
 import { toast } from "react-hot-toast";
 import { publicClient } from "../../api/client.js";
+import { getSafeSiteLink } from "../../utils/safeSiteLink.js";
 import ReferralsPage from "./dashboard/ReferralsPage.jsx";
 import PanelPoliciesPage from "./dashboard/PanelPoliciesPage.jsx";
 import {
@@ -506,7 +507,10 @@ export default function Dashboard({ onLogout, onDeleteAccount }) {
             if (item.link.includes("subscription")) changeMainTab("subscriptions");
             else if (item.link.includes("order") || item.link.includes("product")) changeMainTab("orders");
             else if (item.link.includes("card")) changeMainTab("cards");
-            else if (item.link.startsWith("http")) window.open(item.link, "_blank");
+            else if (/^https?:\/\//i.test(item.link)) {
+              const safeLink = getSafeSiteLink(item.link);
+              if (safeLink) window.open(safeLink, "_blank", "noopener,noreferrer");
+            }
             setShowNotifications(false);
           }
         }}
